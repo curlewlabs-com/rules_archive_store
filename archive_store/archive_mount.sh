@@ -190,8 +190,8 @@ namespace_name=$(sha256_of "$0" | cut -c1-16)
 # these sends the claim round again, which makes the namespace afresh.
 #
 # `.claims` marks the namespace as one whose helpers claim it, the only kind an
-# evictor retires: a helper revision from before claims makes its namespace and
-# stages in it without a hold the evictor could see.
+# evictor retires: a namespace without it was made by something that may stage
+# in it without a hold the evictor could see.
 claim_namespace() {
     namespace=$store/$namespace_name
     mkdir -p "$namespace/objects" "$namespace/used" "$namespace/holds" 2>/dev/null &&

@@ -51,10 +51,9 @@ not govern them either, since a directory's blocks need not shrink when
 entries leave it, so a store over budget on their account would evict trees
 for bytes their removal never returns.
 
-A namespace with no `holds` directory would come from a helper revision from
-before holds, whose readers leave nothing to check. Such a helper reads a store
-variable nothing sets (archive_mount.sh says which), so no such namespace
-reaches a worker's store; one found anyway is counted and left alone.
+A namespace with no `holds` directory was not made by a helper that takes
+holds, so nothing in it shows whether a reader still reads a tree; one found is
+counted and left alone.
 
 Liveness is one `ps` listing of every process, read after the names it judges
 and before anything is removed on its word, so a PID reissued between one

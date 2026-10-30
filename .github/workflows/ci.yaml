@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.ref_name == 'main' && github.run_id || 'pr' }}
+  cancel-in-progress: ${{ github.ref_name != 'main' }}
+
+jobs:
+  integration:
+    name: Integration (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # Standard public-repository runners avoid metered larger runners. The
+        # macOS ones carry the case-insensitive APFS volume the conversion's
+        # volume test and the linked trees need.
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15-intel, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+      - uses: bazel-contrib/setup-bazel@0.19.0
+        with:
+          bazelisk-cache: false
+          disk-cache: false
+          repository-cache: false
+          cache-save: false
+      - name: Module suites
+        run: bazel test //... --test_output=errors
+      - name: Independent consumer
+        working-directory: examples/consumer
+        run: bazel test //... --test_output=errors
+      - name: Verify a prepared release archive
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: python3 tools/prepare_release.py "$RELEASE_TAG" > "$RUNNER_TEMP/release-notes.md"
+
+  pre-commit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+      - run: python3 -m pip install pre-commit==4.3.0
+      - run: pre-commit run --all-files
+
+  conclusion:
+    needs: [integration, pre-commit]
+    runs-on: ubuntu-24.04
+    if: always()
+    steps:
+      - name: Require every integration and lint job to pass
+        env:
+          INTEGRATION: ${{ needs.integration.result }}
+          LINT: ${{ needs.pre-commit.result }}
+        run: test "$INTEGRATION" = success && test "$LINT" = success

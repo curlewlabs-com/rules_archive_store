@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+jobs:
+  reviewed-source:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require a commit already merged to main
+        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+  verify:
+    needs: reviewed-source
+    uses: ./.github/workflows/ci.yaml
+
+  draft:
+    needs: verify
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    # The template's draft and provenance stage; publishing stays a separate
+    # maintainer decision.
+    uses: bazel-contrib/.github/.github/workflows/release_ruleset.yaml@v7.7.0
+    with:
+      tag_name: ${{ github.ref_name }}
+      bazel_test_command: bazel build //archive_store/...
+      mount_bazel_caches: false
+      draft: true
+      prerelease: false
+      release_files: |
+        dist/rules_archive_store-*.tar.gz
+        dist/SHA256SUMS
+        dist/source.json

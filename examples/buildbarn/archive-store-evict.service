@@ -1,0 +1,26 @@
+# Holds a Linux worker's archive store to its budget (docs/store.md
+# sec."Eviction"). Run it as an account that can remove every action
+# account's read-only trees: here the worker's, with the action group and the
+# overrides that let it.
+[Unit]
+Description=Evict least recently used expansions from the archive store
+# Running before the worker can take an action.
+Before=buildbarn-worker.service
+# The evictor exits after repeated failed passes; a few of those within the
+# window leave the unit failed, for monitoring to report, instead of
+# restarting it unnoticed while the store grows.
+StartLimitIntervalSec=1h
+StartLimitBurst=3
+
+[Service]
+User=buildbarn
+Group=buildbarn
+SupplementaryGroups=buildbarn-actions
+AmbientCapabilities=CAP_DAC_OVERRIDE CAP_FOWNER
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_FOWNER
+ExecStart=/usr/bin/python3.14 -B /usr/local/libexec/archive-store-evict/archive_store_evict.py --store /var/lib/buildbarn-worker/archives --budget-bytes 107374182400 --keep-seconds 14400 --interval 300
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

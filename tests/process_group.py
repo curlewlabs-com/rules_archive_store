@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 
+
 def signal_group(group: int, signum: int) -> bool:
     """Send `signum` to every process in `group`; False when the group has
     nothing left to stop.

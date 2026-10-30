@@ -1,0 +1,50 @@
+load("@curlewlabs_rules_archive_store//archive_store:archives.bzl", "archive_test", "declared_archive")
+load("@rules_python//python:py_binary.bzl", "py_binary")
+load(":rules.bzl", "read_archive", "read_tree")
+
+py_binary(
+    name = "make_archive",
+    srcs = ["make_archive.py"],
+)
+
+genrule(
+    name = "tool_tar",
+    outs = [
+        "tool.tar",
+        "tool.tar.sha256",
+    ],
+    cmd = "$(execpath :make_archive) $(execpath tool.tar) $(execpath tool.tar.sha256)",
+    tools = [":make_archive"],
+)
+
+declared_archive(
+    name = "tool",
+    archive = "tool.tar",
+    sha256_file = "tool.tar.sha256",
+    strip_prefix = "tool-1",
+)
+
+py_binary(
+    name = "check",
+    srcs = ["check.py"],
+)
+
+archive_test(
+    name = "tool_test",
+    size = "small",
+    archives = {"tool": ":tool"},
+    args = ["tool"],
+    test = ":check",
+)
+
+read_archive(
+    name = "read_archive",
+    archive = ":tool",
+)
+
+# A linked tree is built on macOS only.
+read_tree(
+    name = "read_tree",
+    archive = ":tool",
+    target_compatible_with = ["@platforms//os:macos"],
+)

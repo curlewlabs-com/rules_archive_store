@@ -414,9 +414,8 @@ class ArchiveStoreEvictTest(unittest.TestCase):
         self.assertTrue((published / "tool/data.txt").is_file())
 
     def test_a_namespace_that_takes_no_holds_is_left_alone(self) -> None:
-        # A helper revision from before holds leaves nothing that shows whether
-        # its actions still read a tree. It reads a store variable nothing sets,
-        # so none should reach a worker's store; one that does is not evicted.
+        # A namespace made without holds leaves nothing that shows whether its
+        # readers still read a tree, so the evictor must not take one.
         digest = self._publish("a", b"old helper\n", _LONG_UNUSED)
         holds = self.namespace / "holds"
         for hold in holds.iterdir():
@@ -578,8 +577,8 @@ class ArchiveStoreEvictTest(unittest.TestCase):
         for part in ("objects", "holds", "used"):
             (claimed / part).mkdir(parents=True)
         (claimed / ".claims").touch()
-        # A namespace of a helper revision from before claims, whose helper
-        # may stage in it with no hold the pass could see.
+        # A namespace with no claims marker, whose maker may stage in it with no
+        # hold the pass could see.
         unclaimed = self.store / ("e" * 16)
         for part in ("objects", "holds", "used"):
             (unclaimed / part).mkdir(parents=True)

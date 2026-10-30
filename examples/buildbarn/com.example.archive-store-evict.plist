@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Holds a Mac worker's archive store to its budget (docs/store.md,
+     Eviction), as root, which can remove every action account's read-only
+     trees. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.example.archive-store-evict</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/python3.14</string>
+    <string>-B</string>
+    <string>/usr/local/libexec/archive-store-evict/archive_store_evict.py</string>
+    <string>--store</string>
+    <string>/private/var/db/buildbarn-worker/archives</string>
+    <string>--budget-bytes</string>
+    <string>107374182400</string>
+    <string>--keep-seconds</string>
+    <string>14400</string>
+    <string>--interval</string>
+    <string>300</string>
+  </array>
+  <key>UserName</key>
+  <string>root</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/var/log/archive-store-evict.log</string>
+  <key>StandardErrorPath</key>
+  <string>/var/log/archive-store-evict.log</string>
+</dict>
+</plist>

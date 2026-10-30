@@ -1,0 +1,15 @@
+module(name = "rules_archive_store_consumer")
+
+bazel_dep(name = "curlewlabs_rules_archive_store", version = "0.1.0")
+bazel_dep(name = "platforms", version = "1.1.0")
+bazel_dep(name = "rules_python", version = "2.4.2")
+
+consumer = use_extension("//:deps.bzl", "deps")
+use_repo(consumer, "consumer_bun")
+
+# This checkout's module. tools/check_consumer.py points the same consumer at a
+# prepared release archive instead, with --override_module.
+local_path_override(
+    module_name = "curlewlabs_rules_archive_store",
+    path = "../..",
+)
