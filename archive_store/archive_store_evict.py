@@ -114,7 +114,7 @@ _PS_TIMEOUT_SECONDS = 30
 # on Linux and on macOS.
 _LSTART_TOKENS = 5
 # Passes in a row that fail before the evictor exits with an error, so the
-# service that runs it records the failure where the guest's health probe
+# service that runs it records the failure where the host's health probe
 # reads it, rather than logging it forever while the store grows.
 _FAILED_PASSES_BEFORE_EXIT = 3
 # A directory is opened without following a link in its own name, so a link

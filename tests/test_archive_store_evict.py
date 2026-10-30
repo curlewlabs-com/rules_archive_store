@@ -198,7 +198,7 @@ class ArchiveStoreEvictTest(unittest.TestCase):
     def test_over_budget_a_recently_read_tree_goes_and_is_logged_as_thrash(
         self,
     ) -> None:
-        # The budget is a ceiling on the guest's disk, so a recent read does not
+        # The budget is a ceiling on the host's disk, so a recent read does not
         # keep a tree once the store is over it; that it had to go is the sign
         # the budget is smaller than what the worker's actions read.
         digest = self._publish("a", b"recent\n", _NOW - _KEEP / 2)
@@ -248,7 +248,7 @@ class ArchiveStoreEvictTest(unittest.TestCase):
         self.assertFalse((self.namespace / other).is_symlink())
 
     def test_a_trash_that_cannot_drain_takes_nothing_more_and_counts(self) -> None:
-        # Bytes the evictor could not delete are still on the guest's disk, so
+        # Bytes the evictor could not delete are still on the host's disk, so
         # they must not read as freed, and further trees must not pile up
         # behind them in the trash.
         first = self._publish("a", b"first\n", _LONG_UNUSED - 100)
