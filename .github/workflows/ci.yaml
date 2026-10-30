@@ -38,16 +38,6 @@ jobs:
           cache-save: false
       - name: Module suites
         run: bazel test //... --test_output=errors
-      # Diagnostic: the Intel runner refused the darwin-x64 Bun with EBADARCH.
-      - name: Runner architecture
-        if: failure() && runner.os == 'macOS'
-        run: |
-          uname -m
-          sysctl -n machdep.cpu.brand_string || true
-          sysctl -in sysctl.proc_translated || true
-          bun="$(bazel info output_base)/external/+deps+test_bun/bun"
-          file "$bun" "$(command -v python3)" "$(command -v bazel)"
-          "$bun" --version || true
       - name: Independent consumer
         working-directory: examples/consumer
         run: bazel test //... --test_output=errors
