@@ -195,8 +195,8 @@
   "selectedYankedVersions": {},
   "moduleExtensions": {
     "//tests:deps.bzl%deps": {
-      "general": {
-        "bzlTransitiveDigest": "xXsQyemZSC7MxZPztXC3dTqAfSAZ3E52UNBaiye8q5o=",
+      "os:osx,arch:aarch64": {
+        "bzlTransitiveDigest": "uZ7s651bAzHIw8VhOaidGil+pL/UGMQ+Utsir6muYMM=",
         "usagesDigest": "lpEx18DcwwYRigPY8956lzDpHHWguoCSfmP+XPEtWMw=",
         "recordedInputs": [
           "REPO_MAPPING:,bazel_tools bazel_tools"
