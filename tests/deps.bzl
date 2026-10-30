@@ -22,4 +22,6 @@ def _deps(ctx):
         build_file_content = 'exports_files(["bun"])',
     )
 
-deps = module_extension(implementation = _deps)
+# The Bun downloaded depends on the host, so the lockfile keys this
+# extension's result by both.
+deps = module_extension(implementation = _deps, os_dependent = True, arch_dependent = True)
