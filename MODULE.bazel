@@ -1,0 +1,12 @@
+module(
+    name = "curlewlabs_rules_archive_store",
+    version = "0.1.0",
+)
+
+# The conversion, its parts and the evictor's tests are Python; the conversion
+# needs 3.14, the default rules_python registers.
+bazel_dep(name = "rules_python", version = "2.4.2")
+bazel_dep(name = "platforms", version = "1.0.0", dev_dependency = True)
+
+tests = use_extension("//tests:deps.bzl", "deps", dev_dependency = True)
+use_repo(tests, "test_bun")

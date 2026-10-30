@@ -1,0 +1,54 @@
+load("@rules_python//python:py_binary.bzl", "py_binary")
+load("@rules_python//python:py_library.bzl", "py_library")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "archive_mount.sh",
+    "archive_tree.ts",
+    "archive_tree_manifest.ts",
+    # An executor installs it beside each instance's store (docs/executor.md).
+    "archive_store_evict.py",
+    "archives.bzl",
+    "archive_parts.bzl",
+])
+
+py_library(
+    name = "archive_parts_lib",
+    srcs = ["archive_parts.py"],
+    imports = ["."],
+)
+
+py_library(
+    name = "archive_drop_lib",
+    srcs = ["archive_drop.py"],
+    imports = ["."],
+)
+
+# The tar member checks, for a ruleset that unpacks tarballs under the same
+# rules as the conversion.
+py_library(
+    name = "archive_to_tar_lib",
+    srcs = ["archive_to_tar.py"],
+    imports = ["."],
+    deps = [
+        ":archive_drop_lib",
+        ":archive_parts_lib",
+    ],
+)
+
+py_library(
+    name = "archive_store_evict_lib",
+    srcs = ["archive_store_evict.py"],
+    imports = ["."],
+)
+
+py_binary(
+    name = "archive_to_tar",
+    srcs = ["archive_to_tar.py"],
+    main = "archive_to_tar.py",
+    deps = [
+        ":archive_drop_lib",
+        ":archive_parts_lib",
+    ],
+)

@@ -1,0 +1,262 @@
+load("@rules_python//python:py_binary.bzl", "py_binary")
+load("@rules_python//python:py_library.bzl", "py_library")
+load("@rules_python//python:py_test.bzl", "py_test")
+load("//archive_store:archives.bzl", "archive_binary", "archive_test", "declared_archive")
+load(":probe.bzl", "archive_probe")
+load(":tree_probe.bzl", "archive_tree_probe", "archive_tree_probe_test")
+
+py_library(
+    name = "unittest_timeouts_lib",
+    srcs = ["unittest_timeouts.py"],
+    imports = ["."],
+)
+
+py_library(
+    name = "process_group_lib",
+    srcs = ["process_group.py"],
+    imports = ["."],
+)
+
+py_library(
+    name = "archive_mount_test_support_lib",
+    srcs = ["archive_mount_test_support.py"],
+    data = ["//archive_store:archive_mount.sh"],
+    imports = ["."],
+    deps = [
+        ":unittest_timeouts_lib",
+        "//archive_store:archive_parts_lib",
+    ],
+)
+
+py_library(
+    name = "archive_to_tar_test_support_lib",
+    srcs = ["archive_to_tar_test_support.py"],
+    imports = ["."],
+    deps = [
+        "//archive_store:archive_drop_lib",
+        "//archive_store:archive_parts_lib",
+        "//archive_store:archive_to_tar_lib",
+    ],
+)
+
+# Each subprocess wait is bounded by unittest_timeouts.INFINITE, so a suite
+# that waits on one needs a ceiling above one full backstop plus its own run.
+py_test(
+    name = "test_archive_binary",
+    timeout = "moderate",
+    srcs = ["test_archive_binary.py"],
+    data = [":archive_probe_binary"],
+    deps = [":unittest_timeouts_lib"],
+)
+
+py_test(
+    name = "test_archive_mount",
+    timeout = "moderate",
+    srcs = ["test_archive_mount.py"],
+    deps = [":archive_mount_test_support_lib"],
+)
+
+py_test(
+    name = "test_archive_mount_store",
+    timeout = "moderate",
+    srcs = ["test_archive_mount_store.py"],
+    deps = [
+        ":archive_mount_test_support_lib",
+        ":process_group_lib",
+    ],
+)
+
+py_test(
+    name = "test_archive_parts",
+    srcs = ["test_archive_parts.py"],
+    deps = [
+        ":archive_to_tar_test_support_lib",
+        "//archive_store:archive_parts_lib",
+        "//archive_store:archive_to_tar_lib",
+    ],
+)
+
+py_test(
+    name = "test_archive_store_evict",
+    timeout = "moderate",
+    srcs = ["test_archive_store_evict.py"],
+    data = [
+        "//archive_store:archive_mount.sh",
+        "//archive_store:archive_store_evict.py",
+    ],
+    deps = [
+        ":unittest_timeouts_lib",
+        "//archive_store:archive_parts_lib",
+        "//archive_store:archive_store_evict_lib",
+    ],
+)
+
+py_test(
+    name = "test_archive_to_tar",
+    srcs = ["test_archive_to_tar.py"],
+    deps = [
+        ":archive_to_tar_test_support_lib",
+        "//archive_store:archive_drop_lib",
+        "//archive_store:archive_to_tar_lib",
+    ],
+)
+
+py_test(
+    name = "test_archive_to_tar_bounds",
+    srcs = ["test_archive_to_tar_bounds.py"],
+    deps = [
+        ":archive_to_tar_test_support_lib",
+        "//archive_store:archive_to_tar_lib",
+    ],
+)
+
+py_test(
+    name = "test_archive_to_tar_volume",
+    # The macOS volume check creates every candidate name as a real file, which
+    # takes seconds on an idle APFS volume and more on a loaded one.
+    timeout = "moderate",
+    srcs = ["test_archive_to_tar_volume.py"],
+    # It observes the host volume's name folding, which no input declares, so
+    # a cached pass would outlive the macOS or APFS release it saw. Bazel's
+    # macOS sandbox refuses to create some of the names it tries, with EPERM,
+    # where the volume itself takes them.
+    tags = [
+        "external",
+        "no-sandbox",
+    ],
+    deps = [
+        ":archive_to_tar_test_support_lib",
+        "//archive_store:archive_to_tar_lib",
+    ],
+)
+
+py_test(
+    name = "test_archive_tree",
+    timeout = "moderate",
+    srcs = ["test_archive_tree.py"],
+    data = [
+        "//archive_store:archive_tree.ts",
+        "//archive_store:archive_tree_manifest.ts",
+        "@test_bun//:bun",
+    ],
+    env = {"ARCHIVE_TREE_TEST_BUN": "$(rootpath @test_bun//:bun)"},
+    deps = [
+        ":unittest_timeouts_lib",
+        "//archive_store:archive_parts_lib",
+        "//archive_store:archive_store_evict_lib",
+    ],
+)
+
+py_binary(
+    name = "probe_archive",
+    srcs = ["probe_archive.py"],
+    main = "probe_archive.py",
+)
+
+genrule(
+    name = "_probe_archives",
+    outs = [
+        "probe.tar",
+        "probe.tar.sha256",
+        "probe.zip",
+        "probe.zip.sha256",
+    ],
+    cmd = " ".join([
+        "$(execpath :probe_archive)",
+        "--archive $(execpath probe.tar) --digest $(execpath probe.tar.sha256)",
+        "--zip $(execpath probe.zip) --zip-digest $(execpath probe.zip.sha256)",
+    ]),
+    tools = [":probe_archive"],
+)
+
+declared_archive(
+    name = "_probe_tar",
+    archive = "probe.tar",
+    # Case-colliding headers, as an Android NDK zip's are.
+    drop = ["probe-1/include"],
+    dropped_sha256 = "1d7063af951abcedf5471a28c642926671323547eabbb301e651870d78d90267",
+    # Small, so the probe reads a tar of several parts, as a large SDK's is.
+    part_bytes = 64,
+    sha256_file = "probe.tar.sha256",
+    strip_prefix = "probe-1",
+)
+
+declared_archive(
+    name = "_probe_zip",
+    archive = "probe.zip",
+    # Case-colliding headers, as an Android NDK zip's are.
+    drop = ["probe-1/include"],
+    dropped_sha256 = "1d7063af951abcedf5471a28c642926671323547eabbb301e651870d78d90267",
+    # Small, so the probe reads a tar of several parts, as a large SDK's is.
+    part_bytes = 64,
+    sha256_file = "probe.zip.sha256",
+    strip_prefix = "probe-1",
+)
+
+# An action that reads the probe archives through the mount helper and checks
+# what it read, so a change that breaks the helper or declared_archive fails
+# here on each OS CI runs.
+archive_probe(
+    name = "archive_probe",
+    archives = [
+        ":_probe_tar",
+        ":_probe_zip",
+    ],
+)
+
+py_binary(
+    name = "probe_reader",
+    srcs = ["probe_reader.py"],
+    main = "probe_reader.py",
+)
+
+# A test reads the probe archives through the store helper, as archive_probe's
+# action does, so a change that breaks a test's mounts fails here.
+archive_test(
+    name = "archive_probe_test",
+    size = "small",
+    archives = {
+        "tar": ":_probe_tar",
+        "zip": ":_probe_zip",
+    },
+    args = [
+        "tar",
+        "zip",
+    ],
+    test = ":probe_reader",
+)
+
+# The same read under `bazel run`'s launcher, which test_archive_binary.py runs
+# without a test's temporary directory, as `bazel run` does.
+archive_binary(
+    name = "archive_probe_binary",
+    archives = {
+        "tar": ":_probe_tar",
+        "zip": ":_probe_zip",
+    },
+    binary = ":probe_reader",
+)
+
+# A linked tree of the probe archives, read by an action and, beside an
+# archive mount, by a test, which reads each unit's tree as a mount of its own.
+archive_tree_probe(
+    name = "archive_tree_probe",
+    a = ":_probe_tar",
+    b = ":_probe_zip",
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
+archive_tree_probe_test(
+    name = "archive_tree_probe_test",
+    size = "small",
+    a = ":_probe_tar",
+    archives = {"tar": ":_probe_tar"},
+    args = [
+        "tar",
+        "tree/a",
+        "tree/b",
+    ],
+    b = ":_probe_zip",
+    target_compatible_with = ["@platforms//os:macos"],
+    test = ":probe_reader",
+)
