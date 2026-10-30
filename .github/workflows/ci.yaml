@@ -38,6 +38,16 @@ jobs:
           cache-save: false
       - name: Module suites
         run: bazel test //... --test_output=errors
+      # Diagnostic: the Intel runner refused the darwin-x64 Bun with EBADARCH.
+      - name: Runner architecture
+        if: failure() && runner.os == 'macOS'
+        run: |
+          uname -m
+          sysctl -n machdep.cpu.brand_string || true
+          sysctl -in sysctl.proc_translated || true
+          bun="$(bazel info output_base)/external/+deps+test_bun/bun"
+          file "$bun" "$(command -v python3)" "$(command -v bazel)"
+          "$bun" --version || true
       - name: Independent consumer
         working-directory: examples/consumer
         run: bazel test //... --test_output=errors
@@ -53,6 +63,11 @@ jobs:
       - uses: actions/checkout@v6.0.2
         with:
           persist-credentials: false
+      # mypy parses with the interpreter it runs under, and the evictor and a
+      # test helper use Python 3.14's unparenthesized `except A, B`.
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.14.4"
       - run: python3 -m pip install pre-commit==4.3.0
       - run: pre-commit run --all-files
 
