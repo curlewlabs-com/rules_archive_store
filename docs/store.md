@@ -225,7 +225,11 @@ tree, as `archive_mounts` does for archives.
   staged, confined and published as `archive_mount.sh` expands an archive. It
   then clones each unit into a staging tree with one `clonefile(2)` of its
   directory, makes the links, refusing one that leaves the tree, makes the tree
-  read-only and publishes it under its key by `symlink(2)`.
+  read-only and publishes it under its key by `symlink(2)`. A directory's clone
+  returns one errno for its whole hierarchy, so a clone that fails says what it
+  left: whether the source, the destination's parent and the destination
+  exist, and, when they are as the call needed them, the first entry that fails
+  when cloned alone.
 - **One builder at a time.** The first actions on an instance often want one
   tree at once, and each expanding every unit only to discard the tree cost
   every one of them the slowest build. So builders of one key, a tree's or a
