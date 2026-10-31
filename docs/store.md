@@ -299,3 +299,19 @@ remove trees for bytes their removal never returns.
 After repeated failed passes the evictor exits with an error, so whatever
 supervises it can report it rather than restart it unnoticed while the store
 grows.
+
+### Releases sharing a store
+
+One executor instance can run actions from builds that pin different releases
+of these rules, while its evictor is the release its deployment installed, so
+one store holds the namespaces of several helper revisions and an evictor of
+one release judges them all. Each helper revision makes a namespace of its own,
+so no helper reads another revision's expansions. What an evictor reads in a
+namespace is this protocol: the `.claims` and `.retiring` markers, the `holds`
+directory and the names of its holds, the `used` records, the published entries
+and the objects they name, and the staging names that carry a creator. A release
+keeps that readable by the evictors of earlier releases. A change an earlier
+evictor would misread goes in a namespace with no `holds` directory, which an
+earlier evictor counts and leaves whole, so that release's trees go only at the
+instance's next start until its own evictor is deployed; its release notes say
+so.
