@@ -66,6 +66,9 @@ const UNPUBLISHED_READS = 3;
 const LOCK_EX = 2;
 const LOCK_NB = 4;
 const EWOULDBLOCK = 35;
+// clonefile(2)'s flag for cloning a link itself, from macOS's
+// <sys/clonefile.h>.
+const CLONE_NOFOLLOW = 1;
 // How often a builder waiting on another's lock tries it again.
 const LOCK_POLL_MS = 20;
 
@@ -197,8 +200,91 @@ function errno(): number {
 function clone(source: string, destination: string): void {
   if (
     system().clonefile(ptr(cString(source)), ptr(cString(destination)), 0) !== 0
+  ) {
+    const code = errno();
+    fail(
+      `clonefile ${source} -> ${destination} failed with errno ${code}; ${cloneFailure(source, destination)}`,
+    );
+  }
+}
+
+// What a failed clone left, read after it failed. A directory's clone returns
+// one errno for its whole hierarchy, which says neither which side of the call
+// was missing nor which entry failed, and a failure seen once may not come
+// back; so the error carries both, read while the failure is fresh.
+function cloneFailure(source: string, destination: string): string {
+  const found = [source, path.dirname(destination), destination].map(kind);
+  const state = `after it, the source is ${found[0]}, the destination's parent is ${found[1]} and the destination is ${found[2]}`;
+  if (
+    found[0] !== "a directory" ||
+    found[1] !== "a directory" ||
+    found[2] !== "missing"
   )
-    fail(`clonefile ${source} -> ${destination} failed with errno ${errno()}`);
+    return state;
+  try {
+    return `${state}; ${probe(source, destination)}`;
+  } catch (error) {
+    return `${state}; cloning its entries one at a time failed: ${(error as Error).message}`;
+  }
+}
+
+function kind(at: string): string {
+  let info: fs.Stats;
+  try {
+    info = fs.lstatSync(at);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return code === "ENOENT" ? "missing" : `unreadable (${code})`;
+  }
+  if (info.isSymbolicLink()) return "a link";
+  if (info.isDirectory()) return "a directory";
+  return info.isFile() ? "a file" : "neither a file nor a directory";
+}
+
+// Clone SOURCE's entries one at a time into a scratch directory beside
+// DESTINATION, which is removed after, for the first entry that fails alone.
+function probe(source: string, destination: string): string {
+  const scratch = fs.mkdtempSync(`${destination}.probe.`);
+  staged.add(scratch);
+  try {
+    return (
+      probeEntries(source, scratch, "") ?? "each of its entries clones alone"
+    );
+  } finally {
+    staged.delete(scratch);
+    discard(scratch);
+  }
+}
+
+function probeEntries(
+  source: string,
+  scratch: string,
+  at: string,
+): string | null {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(path.join(source, at), { withFileTypes: true });
+  } catch (error) {
+    return `its directory ${at || "."} cannot be read: ${(error as Error).message}`;
+  }
+  for (const entry of entries) {
+    const name = path.join(at, entry.name);
+    if (entry.isDirectory()) {
+      fs.mkdirSync(path.join(scratch, name));
+      const failed = probeEntries(source, scratch, name);
+      if (failed !== null) return failed;
+    } else if (
+      system().clonefile(
+        ptr(cString(path.join(source, name))),
+        ptr(cString(path.join(scratch, name))),
+        CLONE_NOFOLLOW,
+      ) !== 0
+    ) {
+      const code = errno();
+      return `its entry ${name} fails alone with errno ${code}`;
+    }
+  }
+  return null;
 }
 
 // This process as an evictor tells it apart: its PID and start time, as `ps`

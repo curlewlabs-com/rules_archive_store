@@ -478,6 +478,39 @@ class ArchiveTreeTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(b"leaves its unit", result.stderr)
 
+    def test_a_failed_unit_clone_names_what_it_found_and_the_entry_that_fails(
+        self,
+    ) -> None:
+        # A directory's clone returns one errno for its whole hierarchy, so a
+        # rare failure is undiagnosable unless its error says which side was
+        # missing and which entry fails alone. An unreadable file in a
+        # published expansion fails the unit's clone with EACCES.
+        c = self._archive("c", {"index.js": b"c\n", "lib/secret.js": b"s\n"})
+        plain = (
+            self._manifest(self.b) + f"unit|.store/c@1/node_modules/c|{c[1]}|{c[0]}|.\n"
+        )
+        self.assertEqual(self._run("first", plain, ["true"]).returncode, 0)
+        published = self._objects()
+        expansion = self.namespace / "objects" / self._object_of(c[1])
+        (expansion / "lib" / "secret.js").chmod(0)
+
+        # Marking a bin makes the second tree a key of its own, so it clones
+        # the expansion again.
+        marked = plain + "exec|.store/c@1/node_modules/c/index.js\n"
+        result = self._run("second", marked, ["true"])
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b"failed with errno 13", result.stderr)
+        self.assertIn(
+            b"the source is a directory, the destination's parent is a directory"
+            b" and the destination is missing",
+            result.stderr,
+        )
+        self.assertIn(
+            b"its entry lib/secret.js fails alone with errno 13", result.stderr
+        )
+        # Neither the failed tree's staging nor the probe's scratch is left.
+        self.assertEqual(self._objects(), published)
+
     def test_an_executable_outside_every_unit_is_refused(self) -> None:
         # Outside a unit the file is one a link reaches, or none the tree
         # holds, so the tree must not change its mode.
