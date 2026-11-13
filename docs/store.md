@@ -66,7 +66,12 @@ expansion. What an executor has to provide for that is
   execs the test, as it does an action's command, so the test is the process
   whose holds keep its trees from eviction for as long as it runs. Mounting
   counts against the test's timeout, so the launcher exports the epoch second it
-  started in `ARCHIVE_TEST_STARTED` for a test that keeps its own deadline. A
+  started in `ARCHIVE_TEST_STARTED` for a test that keeps its own deadline.
+  The wall clock can step while the archives mount, so where `/proc/uptime` is
+  readable the launcher also exports the same start on the host's
+  `CLOCK_BOOTTIME`, as `/proc/uptime` prints it, in
+  `ARCHIVE_TEST_STARTED_BOOTTIME`. A test that finds it reads its elapsed time
+  from that clock, which does not step; elsewhere the variable is unset. A
   rule whose mounts come from a provider rather than a dict written in BUILD
   builds the same launcher through `archive_test_launcher`. Such a wrapper
   launches the test's executable directly, so the test's own `args` never reach
