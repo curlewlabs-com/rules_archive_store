@@ -29,6 +29,20 @@ ArchiveInfo, _new_archive_info = provider(
 # since the remote input tree does not preserve a source file's mode.
 _HELPER = Label("//archive_store:archive_mount.sh")
 
+# A test launcher's first lines. Mounting counts against the test's timeout, so
+# a test that keeps its own deadline starts it at the launcher's start, not its
+# own: ARCHIVE_TEST_STARTED is that start's epoch second. A wall clock can step
+# while the archives mount, so where /proc/uptime is readable,
+# ARCHIVE_TEST_STARTED_BOOTTIME is the same start on the host's CLOCK_BOOTTIME,
+# which never steps (docs/store.md).
+_TEST_STARTED = """ARCHIVE_TEST_STARTED=$(date +%s)
+export ARCHIVE_TEST_STARTED
+if [ -r /proc/uptime ]; then
+  read -r ARCHIVE_TEST_STARTED_BOOTTIME _ </proc/uptime
+  export ARCHIVE_TEST_STARTED_BOOTTIME
+fi
+"""
+
 def _manifest_field(value, what):
     if "|" in value or "\n" in value:
         fail("%s cannot hold '|' or a newline: %s" % (what, value))
@@ -353,7 +367,7 @@ def archive_tree_test_launcher(ctx, units, links, test, data = [], env = {}, exe
     # The tree is mounted under the test's own temporary directory, which the
     # helper names to the test in ARCHIVE_MOUNT_ROOT, and the helper execs the
     # test, so its holds last exactly as long as the test does.
-    script = "#!/bin/sh\nARCHIVE_TEST_STARTED=$(date +%s)\nexport ARCHIVE_TEST_STARTED\nexec '{bun}' --no-install '{helper}' --root \"${{TEST_TMPDIR:?}}/archive-trees\" '{manifest}' -- '{test}' \"$@\"\n".format(
+    script = "#!/bin/sh\n" + _TEST_STARTED + "exec '{bun}' --no-install '{helper}' --root \"${{TEST_TMPDIR:?}}/archive-trees\" '{manifest}' -- '{test}' \"$@\"\n".format(
         bun = bun.short_path,
         helper = helper.short_path,
         manifest = manifest.short_path,
@@ -527,9 +541,7 @@ def archive_test_launcher(ctx, mounts, test, data = [], env = {}, tree = None):
     # The mounts go under the test's own temporary directory, which the helper
     # names to the test in ARCHIVE_MOUNT_ROOT, and the helper execs the test,
     # so its holds last exactly as long as the test does.
-    # ARCHIVE_TEST_STARTED: mounting counts against the test's timeout, so a
-    # test that keeps its own deadline starts it here, not at its own start.
-    script = "#!/bin/sh\nARCHIVE_TEST_STARTED=$(date +%s)\nexport ARCHIVE_TEST_STARTED\nexec /bin/sh '{helper}' --root \"${{TEST_TMPDIR:?}}/archive-mounts\" '{manifest}' -- {then}'{test}' \"$@\"\n".format(
+    script = "#!/bin/sh\n" + _TEST_STARTED + "exec /bin/sh '{helper}' --root \"${{TEST_TMPDIR:?}}/archive-mounts\" '{manifest}' -- {then}'{test}' \"$@\"\n".format(
         helper = launched.helper.short_path,
         manifest = launched.manifest.short_path,
         then = then,
