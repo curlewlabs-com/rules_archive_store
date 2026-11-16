@@ -149,7 +149,7 @@ untried from it. None of those was measured on its workload
 ## Versions
 
 Developed with Bazel 9.3.1 ([.bazelversion](.bazelversion)), rules_python 2.4.2
-and its Python 3.14 ([MODULE.bazel](MODULE.bazel)), and Bun 1.3.10 for the
+and its Python 3.14 ([MODULE.bazel](MODULE.bazel)), and Bun 1.4.4 for the
 linked tree suite ([tests/deps.bzl](tests/deps.bzl)), on Linux and macOS. These
 are the tested selections, not a compatibility range.
 
