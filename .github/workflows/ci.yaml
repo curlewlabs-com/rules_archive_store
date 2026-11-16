@@ -55,7 +55,7 @@ jobs:
           persist-credentials: false
       # mypy parses with the interpreter it runs under, and the evictor and a
       # test helper use Python 3.14's unparenthesized `except A, B`.
-      - uses: actions/setup-python@v7.0.0
+      - uses: actions/setup-python@v7.1.0
         with:
           python-version: "3.14.4"
       - run: python3 -m pip install pre-commit==4.3.0
