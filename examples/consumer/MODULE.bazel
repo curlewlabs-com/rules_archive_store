@@ -2,7 +2,7 @@ module(name = "rules_archive_store_consumer")
 
 bazel_dep(name = "curlewlabs_rules_archive_store", version = "0.2.0")
 bazel_dep(name = "platforms", version = "1.1.0")
-bazel_dep(name = "rules_python", version = "2.4.2")
+bazel_dep(name = "rules_python", version = "2.4.6")
 
 consumer = use_extension("//:deps.bzl", "deps")
 use_repo(consumer, "consumer_bun")
