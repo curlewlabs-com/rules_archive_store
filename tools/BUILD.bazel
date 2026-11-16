@@ -1,0 +1,17 @@
+load("@rules_python//python:py_library.bzl", "py_library")
+load("@rules_python//python:py_test.bzl", "py_test")
+
+py_library(
+    name = "refresh_toolchain_lib",
+    srcs = ["refresh_toolchain.py"],
+    imports = ["."],
+    visibility = ["//visibility:private"],
+)
+
+py_test(
+    name = "refresh_toolchain_test",
+    size = "small",
+    srcs = ["refresh_toolchain_test.py"],
+    main = "refresh_toolchain_test.py",
+    deps = [":refresh_toolchain_lib"],
+)

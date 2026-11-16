@@ -57,6 +57,7 @@ jobs:
       # test helper use Python 3.14's unparenthesized `except A, B`.
       - uses: actions/setup-python@v7.1.0
         with:
+          # renovate: datasource=python-version depName=python
           python-version: "3.14.4"
       - run: python3 -m pip install pre-commit==4.3.0
       - run: pre-commit run --all-files
