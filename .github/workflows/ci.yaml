@@ -27,7 +27,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v6.1.0
         with:
           persist-credentials: false
       - uses: bazel-contrib/setup-bazel@0.19.1
@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v6.1.0
         with:
           persist-credentials: false
       # mypy parses with the interpreter it runs under, and the evictor and a
