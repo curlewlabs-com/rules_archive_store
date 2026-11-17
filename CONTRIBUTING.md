@@ -8,7 +8,9 @@ behavior change and its verification.
 
 Curlew Labs maintains this project. Jeffrey Wall
 ([jeffwall-curlewlabs](https://github.com/jeffwall-curlewlabs)) reviews changes
-and approves releases. Use issues for reproducible defects and proposals; use
+and approves the releases that
+[need approval](docs/releases.md#which-releases-need-approval). Use issues for
+reproducible defects and proposals; use
 [private vulnerability reporting](SECURITY.md) for security concerns.
 
 Changes land through pull requests with passing CI and maintainer review;

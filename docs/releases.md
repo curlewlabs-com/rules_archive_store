@@ -1,8 +1,15 @@
-# Release preparation and approval
+# Release preparation and publication
 
 A release is a source-only archive of a reviewed commit: the committed module,
 its tests, docs, examples and license, without Git metadata, untracked files or
 build output.
+
+## Which releases need approval
+
+A patch or minor release needs no approval beyond the checks in the steps below:
+whoever cuts it follows them in order, and each step's check is the gate. A
+major version, a 1.0, or a minor before 1.0 that changes an interface consumers
+use needs the maintainer's explicit approval before its tag is pushed.
 
 ## Prepare a candidate
 
@@ -26,10 +33,11 @@ An argument such as `v0.1.0` must match the module's version. CI runs the same
 preparation on every platform it tests. A green candidate is evidence for
 review, not permission to publish.
 
-## Create the approved draft
+## Create the draft
 
-After maintainer approval, push a fixed `vMAJOR.MINOR.PATCH` tag at the reviewed
-commit on `main`. Never move or replace a fixed tag. The
+Push a fixed `vMAJOR.MINOR.PATCH` tag at the reviewed commit on `main`, with
+approval first where the release needs it. Never move or replace a fixed tag.
+The
 [release workflow](../.github/workflows/release.yaml) checks that the commit is
 on `main`, runs CI, and calls the pinned
 [rules-template release workflow](https://github.com/bazel-contrib/.github/blob/v7.7.0/.github/workflows/release_ruleset.yaml),
@@ -51,6 +59,6 @@ gh attestation verify rules_archive_store-X.Y.Z.tar.gz -R curlewlabs-com/rules_a
   --source-ref refs/tags/vX.Y.Z
 ```
 
-Then, with the maintainer's explicit approval, publish the draft. Immutable
-releases and fixed-tag protection keep published bytes from being rewritten; a
-published defect is fixed with a new version.
+Then publish the draft. Immutable releases and fixed-tag protection keep
+published bytes from being rewritten; a published defect is fixed with a new
+version.
