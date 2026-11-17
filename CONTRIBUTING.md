@@ -1,8 +1,24 @@
 # Contributing
 
+Thanks for your interest in improving `rules_archive_store`. The bar for a
+change is whether every action still reads exactly the tree its archive's
+digest names, from an expansion each executor instance publishes once and never
+evicts while a reader holds it. Bug fixes, sharper refusals of archive members
+the conversion cannot place safely, support for another executor, and clearer
+docs are all welcome.
+
 Use the Bazel release in `.bazelversion` and Git. The test suite downloads its
 own Bun and Python. Keep changes on a branch and open a pull request with the
 behavior change and its verification.
+
+## Before a large change
+
+Propose it in an issue before writing it. The guarantees rest on rules that are
+easy to weaken by accident, and [docs/store.md](docs/store.md) records them: the
+conversion's member and link checks, the publication protocol, holds and
+eviction, and what keeps a store readable by an earlier release's evictor.
+[docs/executor.md](docs/executor.md) records what an executor must provide. A
+short discussion up front saves rework.
 
 ## Maintainership and review
 
