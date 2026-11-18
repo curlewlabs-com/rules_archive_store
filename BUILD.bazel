@@ -1,4 +1,5 @@
 exports_files([
-    "LICENSE",
+    "LICENSE-APACHE",
+    "LICENSE-MIT",
     "README.md",
 ])
