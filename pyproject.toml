@@ -1,0 +1,10 @@
+# Configuration for the development tools only; the module is built by Bazel
+# and ruff reads ruff.toml.
+
+[tool.mypy]
+# The evictor and a test helper use Python 3.14's unparenthesized
+# `except A, B`, so mypy must parse as 3.14 and run under it.
+python_version = "3.14"
+strict = true
+# The consumer by file, since its directory holds its own Bazel output links.
+files = ["archive_store", "examples/consumer/*.py", "tests", "tools"]
