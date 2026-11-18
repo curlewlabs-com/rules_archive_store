@@ -42,7 +42,7 @@ change. Fixed version tags and published release artifacts are never replaced.
 python3 -m pip install -r requirements-dev.txt
 mypy
 bun install --frozen-lockfile
-bun run --bun typecheck
+bun run typecheck
 bazel test //...
 ```
 

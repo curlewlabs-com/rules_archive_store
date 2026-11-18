@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: ${{ github.ref_name != 'main' }}
 
 jobs:
-  integration:
+  integration-test:
     name: Integration (${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -78,13 +78,15 @@ jobs:
           repository-cache: false
           cache-save: false
       # The Bun the linked tree suite runs the helper under, so the check
-      # needs no second Bun pin; `--bun` keeps tsc off the runner's Node.
-      - name: tsc --noEmit
+      # needs no second Bun pin.
+      - name: Put the suite's Bun on PATH
         run: |
           bazel build @test_bun//:bun
           bun="$(bazel info output_base)/$(bazel cquery @test_bun//:bun --output=files)"
-          "$bun" install --frozen-lockfile
-          "$bun" run --bun typecheck
+          dirname "$bun" >> "$GITHUB_PATH"
+      - run: bun install --frozen-lockfile
+      - name: tsc --noEmit
+        run: bun run typecheck
 
   baseline:
     # The checks every Curlew Labs repository runs, in one place:
@@ -98,13 +100,13 @@ jobs:
       - uses: curlewlabs-com/ci-baseline@f05f17a38ba2dfbaf0cde130a375b346e9a923a2 # v0.2.0
 
   conclusion:
-    needs: [integration, lint, typecheck, baseline]
+    needs: [integration-test, lint, typecheck, baseline]
     runs-on: ubuntu-24.04
     if: always()
     steps:
       - name: Require every integration and lint job to pass
         env:
-          INTEGRATION: ${{ needs.integration.result }}
+          INTEGRATION: ${{ needs.integration-test.result }}
           LINT: ${{ needs.lint.result }}
           TYPECHECK: ${{ needs.typecheck.result }}
           BASELINE: ${{ needs.baseline.result }}
