@@ -142,7 +142,13 @@ use_private_store() {
     store=$(mktemp -d "${TMPDIR:-/tmp}/archive-store.XXXXXX")
     store=$(cd -P "$store" && pwd -P)
     private_store=$store
-    trap 'discard "$private_store"' EXIT
+    # macOS /bin/sh enters an EXIT trap after a `set -u` abort with a stale
+    # `$?`, which can be 0, so the trap fails any exit not marked complete.
+    RUN_COMPLETE=0
+    # The trap assigns _trap_rc itself, which shellcheck does not follow.
+    # shellcheck disable=SC2154
+    trap '_trap_rc=$?; [ "$RUN_COMPLETE" = 1 ] || [ "$_trap_rc" -ne 0 ] || _trap_rc=1
+        discard "$private_store"; exit "$_trap_rc"' EXIT
     trap 'exit 129' HUP
     trap 'exit 130' INT
     trap 'exit 143' TERM
@@ -315,8 +321,12 @@ expand() {
         staging=$(mktemp -d "$namespace/objects/$key.$identity.XXXXXX")
         # Publication-aware, since a signal deferred until `ln` returns can
         # run this after the link names the staging tree, which must then stay.
-        trap '[ "$(readlink "$entry" 2>/dev/null)" = "objects/${staging##*/}" ] ||
-            discard "$staging"' EXIT
+        # The status form is use_private_store's. This subshell clears the
+        # trap before it succeeds, so it never marks itself complete.
+        RUN_COMPLETE=0
+        trap '_trap_rc=$?; [ "$RUN_COMPLETE" = 1 ] || [ "$_trap_rc" -ne 0 ] || _trap_rc=1
+            [ "$(readlink "$entry" 2>/dev/null)" = "objects/${staging##*/}" ] ||
+            discard "$staging"; exit "$_trap_rc"' EXIT
         trap 'exit 129' HUP
         trap 'exit 130' INT
         trap 'exit 143' TERM
@@ -452,6 +462,8 @@ umask "$caller_umask"
 if [ -n "$private_store" ]; then
     # The private store is removed on exit, so the command runs as a child.
     "$@" && status=0 || status=$?
-    exit "$status"
+    [ "$status" -eq 0 ] || exit "$status"
+    RUN_COMPLETE=1
+    exit 0
 fi
 exec "$@"
