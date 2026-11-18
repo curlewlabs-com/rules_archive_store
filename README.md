@@ -27,11 +27,11 @@ kernel time, creating and removing input files.
 
 For one npm consumer's tool closure, median worker time per action:
 
-| Representation                             | macOS  | Linux  |
-| ------------------------------------------ | ------ | ------ |
-| Per-file packages and links                | 14.4 s | 1.4 s  |
-| Archives, every package mounted per action | 7.9 s  | 7.6 s  |
-| Archives, a published linked tree          | 2.2 s  | 0.6 s  |
+| Representation                              | macOS  | Linux  |
+| ------------------------------------------- | ------ | ------ |
+| Per-file packages and links                 | 14.4 s | 1.4 s  |
+| Archives, every package mounted per action  | 7.9 s  | 7.6 s  |
+| Archives, a published linked tree           | 2.2 s  | 0.6 s  |
 | The same, when the tree must first be built | 12.2 s | 20.4 s |
 
 On Linux, whose workers hardlink inputs, per-file was already cheap there, so

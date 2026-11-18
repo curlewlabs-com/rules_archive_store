@@ -843,9 +843,15 @@ async function main(argv: string[]): Promise<number> {
     });
     const status = await child.exited;
     cleanUp();
-    return child.signalCode
-      ? 128 + (os.constants.signals[child.signalCode] ?? 0)
-      : status;
+    const signal = child.signalCode;
+    if (signal === null) return status;
+    // Bun reports a signal with no name by its number.
+    return (
+      128 +
+      (typeof signal === "number"
+        ? signal
+        : (os.constants.signals[signal] ?? 0))
+    );
   }
   return exec(command, environment, process.env.PATH ?? "");
 }

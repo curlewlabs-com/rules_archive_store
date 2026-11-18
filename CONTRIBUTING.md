@@ -38,13 +38,18 @@ change. Fixed version tags and published release artifacts are never replaced.
 
 ## Local checks
 
-Install `pre-commit==4.3.0`, then run:
-
 ```sh
-pre-commit install
-pre-commit run --all-files
+python3 -m pip install -r requirements-dev.txt
+mypy
+bun install --frozen-lockfile
+bun run --bun typecheck
 bazel test //...
 ```
+
+mypy needs Python 3.14 and the type check needs Bun; `requirements-dev.txt`
+and `package.json` pin what they install. Formatting and linting (ruff,
+buildifier, shfmt, prettier, shellcheck, actionlint) run in CI's `baseline`
+job, from [ci-baseline](https://github.com/curlewlabs-com/ci-baseline).
 
 The suites exercise the real helpers against real stores in temporary
 directories. On macOS they also build linked trees with `clonefile(2)` and ask
@@ -67,6 +72,10 @@ which writes each host's Bun archive digest from the release's
 `SHASUMS256.txt` and the versions in the README. Run the same command after
 moving a pin by hand. `MODULE.bazel.lock` is not part of it: Bazel rewrites the
 host's entries on its next run.
+
+The type check's pins in `package.json` move with `bun add --dev --exact`,
+which rewrites `bun.lock`; keep `@types/bun` at the Bun release
+`tests/deps.bzl` pins.
 
 ## Releases
 
