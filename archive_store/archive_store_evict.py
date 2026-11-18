@@ -465,8 +465,10 @@ class Evictor:
         if not (self._draining and self._empty(namespace)):
             directory.unlink(_RETIRING)
             return
+        # Helpers and evictors only test that the marker exists, which takes no
+        # permission on the file itself, so no other account needs to read it.
         os.close(
-            os.open(_RETIRING, os.O_WRONLY | os.O_CREAT, 0o644, dir_fd=directory.fd)
+            os.open(_RETIRING, os.O_WRONLY | os.O_CREAT, 0o600, dir_fd=directory.fd)
         )
         # Read after the marker: a helper that claimed the namespace before it
         # could see the marker holds it by now (archive_mount.sh).
