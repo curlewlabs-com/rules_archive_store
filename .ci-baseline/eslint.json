@@ -1,0 +1,12 @@
+{
+  "ignore": [
+    {
+      "path": "archive_store/archive_tree.ts",
+      "reason": "Its content is part of what names the archive-store namespace, so any edit moves every consumer onto a new, empty store; its lint fixes ship with the next change that moves the namespace."
+    },
+    {
+      "path": "archive_store/archive_tree_manifest.ts",
+      "reason": "Its content is part of what names the archive-store namespace, so any edit moves every consumer onto a new, empty store; its lint fixes ship with the next change that moves the namespace."
+    }
+  ]
+}

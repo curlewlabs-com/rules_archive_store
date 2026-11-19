@@ -51,6 +51,10 @@ and `package.json` pin what they install. Formatting and linting (ruff,
 buildifier, shfmt, prettier, shellcheck, actionlint) run in CI's `baseline`
 job, from [ci-baseline](https://github.com/curlewlabs-com/ci-baseline).
 
+eslint runs in CI through ci-baseline. To run the same check locally, after
+installing dependencies: `<a ci-baseline checkout>/lib/lint-local.sh`. It runs
+the ci-baseline commit this repository's workflows pin.
+
 The suites exercise the real helpers against real stores in temporary
 directories. On macOS they also build linked trees with `clonefile(2)` and ask
 the volume which names it merges, which needs a case-insensitive APFS volume;
