@@ -131,6 +131,16 @@ py_test(
 )
 
 py_test(
+    name = "test_namespace_stability",
+    srcs = ["test_namespace_stability.py"],
+    data = [
+        "//archive_store:archive_mount.sh",
+        "//archive_store:archive_tree.ts",
+        "//archive_store:archive_tree_manifest.ts",
+    ],
+)
+
+py_test(
     name = "test_archive_tree",
     timeout = "moderate",
     srcs = ["test_archive_tree.py"],

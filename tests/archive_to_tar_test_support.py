@@ -34,7 +34,7 @@ def zip_bytes(members: list[Member]) -> bytes:
 
 def tar_bytes(members: list[TarMember], mode: str = "w:gz") -> bytes:
     buffer = io.BytesIO()
-    with tarfile.open(fileobj=buffer, mode=mode) as archive:  # type: ignore[call-overload]
+    with tarfile.open(fileobj=buffer, mode=mode) as archive:  # type: ignore[call-overload]  # pyright: ignore[reportCallIssue, reportArgumentType, reportUnknownVariableType] -- a mode chosen at run time, which typeshed lists only as literals
         for name, kind, permissions, content, link in members:
             info = tarfile.TarInfo(name)
             info.type = kind
@@ -42,9 +42,9 @@ def tar_bytes(members: list[TarMember], mode: str = "w:gz") -> bytes:
             info.linkname = link
             if kind == tarfile.REGTYPE:
                 info.size = len(content)
-                archive.addfile(info, io.BytesIO(content))
+                archive.addfile(info, io.BytesIO(content))  # pyright: ignore[reportUnknownMemberType] -- archive is unresolved above
             else:
-                archive.addfile(info)
+                archive.addfile(info)  # pyright: ignore[reportUnknownMemberType] -- archive is unresolved above
     return buffer.getvalue()
 
 

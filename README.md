@@ -146,6 +146,17 @@ processes using the mount, and simulators, `codesign` and app installs are
 untried from it. None of those was measured on its workload
 ([docs/executor.md](docs/executor.md#why-not-buildbarns-nfsv4-build-directory)).
 
+## Known issues
+
+- Two files are left out of the shared eslint check:
+  `archive_store/archive_tree.ts` and `archive_store/archive_tree_manifest.ts`
+  (`.ci-baseline/eslint.json`). Their content is part of what names the store
+  namespace of the linked tree helper, so any edit to them, a lint fix
+  included, moves every consumer onto a new, empty store. The findings are
+  fixed together with the next change that moves the namespace, and that change
+  removes the exclusion; `tests/test_namespace_stability.py` fails until it
+  does.
+
 ## Versions
 
 Developed with Bazel 9.3.1 ([.bazelversion](.bazelversion)), the rules_python

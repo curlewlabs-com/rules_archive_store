@@ -48,7 +48,7 @@ _PART_BYTES = 2500
 class ArchivePartsTest(ConversionTestCase):
     def _split(self, name: str, content: bytes) -> list[Path]:
         """`content` cut into _PART_BYTES parts named as split(1) names them."""
-        parts = []
+        parts: list[Path] = []
         for index, start in enumerate(range(0, len(content), _PART_BYTES)):
             part = self.root / archive_parts.part_name(name, index)
             part.write_bytes(content[start : start + _PART_BYTES])

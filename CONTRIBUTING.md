@@ -51,6 +51,10 @@ and `package.json` pin what they install. Formatting and linting (ruff,
 buildifier, shfmt, prettier, shellcheck, actionlint) run in CI's `baseline`
 job, from [ci-baseline](https://github.com/curlewlabs-com/ci-baseline).
 
+eslint runs in CI through ci-baseline. To run the same check locally, after
+installing dependencies: `<a ci-baseline checkout>/lib/lint-local.sh`. It runs
+the ci-baseline commit this repository's workflows pin.
+
 The suites exercise the real helpers against real stores in temporary
 directories. On macOS they also build linked trees with `clonefile(2)` and ask
 the volume which names it merges, which needs a case-insensitive APFS volume;
@@ -80,6 +84,14 @@ which rewrites `bun.lock`; keep `@types/bun` at the Bun release
 ## Releases
 
 Follow [releases](docs/releases.md).
+
+A change that moves a store namespace, which editing `archive_mount.sh`,
+`archive_tree.ts` or `archive_tree_manifest.ts` does, makes every consumer
+rebuild its store cold. `tests/test_namespace_stability.py` pins both
+namespaces and fails on such a change. When the move is intended, update the
+pinned value in the same change, say so first in the release notes, and fix the
+lint findings in the two TypeScript files and remove their entries from
+`.ci-baseline/eslint.json`.
 
 ## License
 

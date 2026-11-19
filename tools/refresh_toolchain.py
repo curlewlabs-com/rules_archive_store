@@ -50,7 +50,7 @@ def pinned_version(sources: dict[str, str], pattern: re.Pattern[str], tool: str)
 
 def parse_shasums(listing: str) -> dict[str, str]:
     """Each file's sha256 by name, from a release's SHASUMS256.txt."""
-    digests = {}
+    digests: dict[str, str] = {}
     for line in listing.splitlines():
         if line.strip():
             sha256, name = line.split()

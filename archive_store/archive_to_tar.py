@@ -74,7 +74,7 @@ import sys
 import tarfile
 import unicodedata
 import zipfile
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Generator, Iterable, Iterator
 from compression import zstd
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass, replace
@@ -380,12 +380,12 @@ def _preflight_zip(archive: Parts) -> None:
     # zipfile reports a read error here as a bad zip, which ZipFile does too.
     try:
         with archive.open() as stream:
-            record = zipfile._EndRecData(stream)  # type: ignore[attr-defined]
+            record = zipfile._EndRecData(stream)  # type: ignore[attr-defined]  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType, reportAttributeAccessIssue] -- zipfile's private end-record reader, as above
     except OSError as error:
         raise ArchiveError(f"{path}'s end record cannot be read: {error}") from error
     if not record:
         raise ArchiveError(f"{path} is not a zip")
-    size: int = record[zipfile._ECD_SIZE]  # type: ignore[attr-defined]
+    size: int = record[zipfile._ECD_SIZE]  # type: ignore[attr-defined]  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType, reportAttributeAccessIssue] -- zipfile's private record layout, as above
     # zipfile parses records until the directory's declared size is consumed,
     # whatever entry count the record claims, so the size is what bounds the
     # ZipInfos it builds: no more than one per smallest record. Holding it to
@@ -424,7 +424,7 @@ def _tar_suffix(path: Path) -> str:
 
 
 @contextmanager
-def _plain_tar(archive: Parts) -> Iterator[io.BufferedIOBase]:
+def _plain_tar(archive: Parts) -> Generator[io.BufferedIOBase]:
     """The tar `archive` holds, decompressed with bounded reads."""
     decompressor = _DECOMPRESSORS[_tar_suffix(archive.name)]
     with archive.open() as raw:
@@ -516,7 +516,7 @@ def _bounded_tarinfo() -> type[tarfile.TarInfo]:
                     )
             else:
                 read["chain"] = 0
-            member = super()._proc_member(archive)  # type: ignore[misc]
+            member = super()._proc_member(archive)  # type: ignore[misc]  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType, reportAttributeAccessIssue] -- tarfile's private member reader, which this subclass wraps
             assert isinstance(member, tarfile.TarInfo)
             return member
 
