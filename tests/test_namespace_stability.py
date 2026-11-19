@@ -21,7 +21,7 @@ _STORE = Path(__file__).parent.parent / "archive_store"
 # archive_mount.sh: sha256_of "$0" | cut -c1-16.
 _MOUNT_NAMESPACE = "387030cf825c805f"
 # archive_tree.ts: sha256 over its own bytes then the manifest's, first 16 hex.
-_TREE_NAMESPACE = "872f5aa65112b9f6"
+_TREE_NAMESPACE = "880dd4beaf2d58ed"
 
 _MOVED = (
     "the store namespace moved: every consumer's store will rebuild cold. If that"
