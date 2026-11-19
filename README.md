@@ -154,7 +154,8 @@ untried from it. None of those was measured on its workload
   namespace of the linked tree helper, so any edit to them, a lint fix
   included, moves every consumer onto a new, empty store. The findings are
   fixed together with the next change that moves the namespace, and that change
-  removes the exclusion.
+  removes the exclusion; `tests/test_namespace_stability.py` fails until it
+  does.
 
 ## Versions
 

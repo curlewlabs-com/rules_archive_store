@@ -85,6 +85,14 @@ which rewrites `bun.lock`; keep `@types/bun` at the Bun release
 
 Follow [releases](docs/releases.md).
 
+A change that moves a store namespace, which editing `archive_mount.sh`,
+`archive_tree.ts` or `archive_tree_manifest.ts` does, makes every consumer
+rebuild its store cold. `tests/test_namespace_stability.py` pins both
+namespaces and fails on such a change. When the move is intended, update the
+pinned value in the same change, say so first in the release notes, and fix the
+lint findings in the two TypeScript files and remove their entries from
+`.ci-baseline/eslint.json`.
+
 ## License
 
 By submitting a contribution for inclusion in this project, you agree that it

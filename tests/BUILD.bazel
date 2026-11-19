@@ -131,9 +131,10 @@ py_test(
 )
 
 py_test(
-    name = "test_eslint_exclusion",
-    srcs = ["test_eslint_exclusion.py"],
+    name = "test_namespace_stability",
+    srcs = ["test_namespace_stability.py"],
     data = [
+        "//archive_store:archive_mount.sh",
         "//archive_store:archive_tree.ts",
         "//archive_store:archive_tree_manifest.ts",
     ],

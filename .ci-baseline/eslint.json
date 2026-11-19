@@ -2,11 +2,11 @@
   "ignore": [
     {
       "path": "archive_store/archive_tree.ts",
-      "reason": "Its content is part of what names the archive-store namespace, so any edit moves every consumer onto a new, empty store; its lint fixes ship with the next change that moves the namespace, which removes this entry."
+      "reason": "Its content is part of what names the archive-store namespace, so any edit moves every consumer onto a new, empty store; its lint fixes ship with the next change that moves the namespace, which tests/test_namespace_stability.py makes deliberate and which removes this entry."
     },
     {
       "path": "archive_store/archive_tree_manifest.ts",
-      "reason": "Its content is part of what names the archive-store namespace, so any edit moves every consumer onto a new, empty store; its lint fixes ship with the next change that moves the namespace, which removes this entry."
+      "reason": "Its content is part of what names the archive-store namespace, so any edit moves every consumer onto a new, empty store; its lint fixes ship with the next change that moves the namespace, which tests/test_namespace_stability.py makes deliberate and which removes this entry."
     }
   ]
 }
