@@ -120,14 +120,16 @@ function makeWritable(tree: string): void {
 function confined(root: string, directory: string, target: string): boolean {
   let here = fs.realpathSync(directory);
   const parts = target.split("/");
-  for (let index = 0; index < parts.length; index++) {
-    const part = parts[index]!;
+  for (const [index, part] of parts.entries()) {
     if (part === "" || part === ".") continue;
     const next = path.join(here, part);
     let isDirectory = false;
     try {
       isDirectory = fs.statSync(next).isDirectory();
-    } catch {}
+    } catch {
+      // A component that cannot be stat'ed, dangling or unreadable, is not a
+      // directory, so it ends the walk like any other.
+    }
     if (!isDirectory) return !parts.slice(index + 1).includes("..");
     here = fs.realpathSync(next);
     if (!`${here}/`.startsWith(`${root}/`)) return false;
@@ -193,7 +195,9 @@ function cString(value: string): Buffer {
 }
 
 function errno(): number {
-  return read.i32(system().__error()!, 0);
+  const location = system().__error();
+  if (location === null) fail("__error() gave no errno location");
+  return read.i32(location, 0);
 }
 
 // One clonefile(2) of a whole directory, its files sharing their blocks.
@@ -407,12 +411,17 @@ class Store {
     }
   }
 
-  // The object under KEY, made by PRODUCE when nothing is published there.
-  async obtain(key: string, produce: () => Promise<void>): Promise<string> {
+  // The object under KEY, made by PRODUCE when nothing is published there,
+  // and whether this call ran PRODUCE.
+  async obtain(
+    key: string,
+    produce: () => Promise<void>,
+  ): Promise<{ object: string; produced: boolean }> {
+    let produced = false;
     for (let reads = 0; reads < UNPUBLISHED_READS; reads++) {
       const object = this.read(key);
-      if (object !== null) return object;
-      await this.exclusively(key, produce);
+      if (object !== null) return { object, produced };
+      if (await this.exclusively(key, produce)) produced = true;
     }
     return fail(
       `${path.join(this.namespace, key)} was unpublished under every read of it`,
@@ -420,7 +429,7 @@ class Store {
   }
 
   // Run PRODUCE unless KEY is published, as the one builder of KEY in this
-  // store. The first actions on an instance often want one tree at once, and
+  // store, and say whether it ran. The first actions on an instance often want one tree at once, and
   // each would otherwise expand every unit and build the tree only to discard
   // it; so builders of one key take flock(2) on `holds/<key>.lock` in turn, and
   // each that finds the key published once it has the lock leaves it there.
@@ -429,7 +438,10 @@ class Store {
   // its lock and reads the entry too. The evictor reads only `@`-named holds,
   // so it leaves the lock alone, and a lock a failed builder left stays until
   // the key is next published (docs/store.md sec."Linked trees").
-  async exclusively(key: string, produce: () => Promise<void>): Promise<void> {
+  async exclusively(
+    key: string,
+    produce: () => Promise<void>,
+  ): Promise<boolean> {
     const entry = path.join(this.namespace, key);
     const lock = path.join(this.namespace, "holds", `${key}.lock`);
     const fd = fs.openSync(
@@ -446,8 +458,10 @@ class Store {
         await Bun.sleep(LOCK_POLL_MS);
       }
       this.waited += performance.now() - waiting;
-      if (readlink(entry) === null) await produce();
+      const produced = readlink(entry) === null;
+      if (produced) await produce();
       fs.rmSync(lock, { force: true });
+      return produced;
     } finally {
       // Which releases the lock.
       fs.closeSync(fd);
@@ -487,7 +501,7 @@ async function expand(store: Store, unit: Unit): Promise<void> {
   );
   for (const file of files) {
     for await (const chunk of Bun.file(file).stream()) {
-      tar.stdin.write(chunk);
+      await tar.stdin.write(chunk);
       await tar.stdin.flush();
     }
   }
@@ -519,11 +533,9 @@ async function build(
   const pending = [...byDigest.values()];
   const work = async () => {
     for (let unit = pending.shift(); unit; unit = pending.shift()) {
-      let produced = false;
-      const object = await store.obtain(unit.digest, async () => {
-        produced = true;
-        await expand(store, unit);
-      });
+      const { object, produced } = await store.obtain(unit.digest, () =>
+        expand(store, unit),
+      );
       expansions.set(unit.digest, object);
       if (produced) built.expanded++;
       else built.reused++;
@@ -549,7 +561,9 @@ async function build(
     }
   };
   for (const unit of manifest.units) {
-    const source = path.join(expansions.get(unit.digest)!, unit.strip);
+    const expansion =
+      expansions.get(unit.digest) ?? fail(`${unit.archive} was not expanded`);
+    const source = path.join(expansion, unit.strip);
     if (!fs.statSync(source, { throwIfNoEntry: false })?.isDirectory())
       fail(`${unit.dest}: ${unit.archive} has no directory ${unit.strip}`);
     parent(unit.dest);
@@ -561,7 +575,9 @@ async function build(
   for (const file of manifest.executables) {
     // A directory link inside the unit's archive could carry the path out of
     // the clone, so the file's real path must lie inside its unit's.
-    const unit = manifest.units.find((u) => file.startsWith(`${u.dest}/`))!;
+    const unit =
+      manifest.units.find((u) => file.startsWith(`${u.dest}/`)) ??
+      fail(`executable ${file} is inside no unit`);
     const at = path.join(staging, file);
     const info = fs.lstatSync(at, { throwIfNoEntry: false });
     if (!info?.isFile())
@@ -698,7 +714,7 @@ function readMarker(
   const named = `${mount}.clone.`;
   return {
     staging:
-      staging?.startsWith(named) &&
+      staging.startsWith(named) &&
       /^[0-9a-f]{12}$/.test(staging.slice(named.length))
         ? staging
         : undefined,
@@ -713,7 +729,7 @@ function exec(
   environment: Record<string, string | undefined>,
   searchPath: string,
 ): never {
-  let file = command[0]!;
+  let file = command[0];
   if (!file.includes("/")) {
     const found = searchPath
       .split(":")
@@ -755,8 +771,8 @@ async function main(argv: string[]): Promise<number> {
   const environment = { ...process.env };
   for (;;) {
     if (argv[0] === "--root" && argv.length >= 2) {
-      fs.mkdirSync(argv[1]!, { recursive: true });
-      base = fs.realpathSync(argv[1]!);
+      fs.mkdirSync(argv[1], { recursive: true });
+      base = fs.realpathSync(argv[1]);
       environment.ARCHIVE_MOUNT_ROOT = base;
       argv = argv.slice(2);
     } else if (argv[0] === "--writable") {
@@ -767,7 +783,7 @@ async function main(argv: string[]): Promise<number> {
     }
   }
   if (argv.length < 3 || argv[1] !== "--") fail(usage);
-  const manifest = readManifest(argv[0]!);
+  const manifest = readManifest(argv[0]);
   const command = argv.slice(2);
   const key = treeKey(manifest);
   system();
@@ -817,11 +833,9 @@ async function main(argv: string[]): Promise<number> {
   }
 
   const built: Built = { expanded: 0, reused: 0 };
-  let missed = false;
-  const object = await store.obtain(key, async () => {
-    missed = true;
-    await build(store, key, manifest, built);
-  });
+  const { object, produced: missed } = await store.obtain(key, () =>
+    build(store, key, manifest, built),
+  );
   mount(object, manifest.mount, base, writable);
   const elapsed = Math.round(performance.now() - started);
   // The host names the store, which belongs to one worker instance.
@@ -846,12 +860,11 @@ async function main(argv: string[]): Promise<number> {
     const signal = child.signalCode;
     if (signal === null) return status;
     // Bun reports a signal with no name by its number.
-    return (
-      128 +
-      (typeof signal === "number"
-        ? signal
-        : (os.constants.signals[signal] ?? 0))
-    );
+    if (typeof signal === "number") return 128 + signal;
+    // NodeJS.Signals declares names this platform's table lacks, such as
+    // SIGPWR on macOS, though the table's type claims every one.
+    const numbers: Partial<Record<string, number>> = os.constants.signals;
+    return 128 + (numbers[signal] ?? 0);
   }
   return exec(command, environment, process.env.PATH ?? "");
 }

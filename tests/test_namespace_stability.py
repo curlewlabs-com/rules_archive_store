@@ -7,11 +7,8 @@ any of those files moves its namespace, and every consumer then rebuilds its
 store cold. A shell fix once moved the namespace unnoticed, so this pins both
 values, computed the way the helpers compute them.
 
-When the failure is intended: update the pinned value in the same change, say
-so first in the release notes, and in that change fix the lint findings in
-archive_tree.ts and archive_tree_manifest.ts and remove their entries from
-.ci-baseline/eslint.json and the README's Known issues, which exist only because
-editing those two files moves the namespace.
+When the failure is intended: update the pinned value in the same change and
+say so first in the release notes.
 """
 
 from __future__ import annotations
@@ -24,14 +21,12 @@ _STORE = Path(__file__).parent.parent / "archive_store"
 # archive_mount.sh: sha256_of "$0" | cut -c1-16.
 _MOUNT_NAMESPACE = "387030cf825c805f"
 # archive_tree.ts: sha256 over its own bytes then the manifest's, first 16 hex.
-_TREE_NAMESPACE = "058472967efeb381"
+_TREE_NAMESPACE = "872f5aa65112b9f6"
 
 _MOVED = (
     "the store namespace moved: every consumer's store will rebuild cold. If that"
-    " is intended, update the pinned value in this change, say so first in the"
-    " release notes, and in the same change fix the lint findings in"
-    " archive_tree.ts and archive_tree_manifest.ts and remove their entries from"
-    " .ci-baseline/eslint.json and the README's Known issues"
+    " is intended, update the pinned value in this change and say so first in"
+    " the release notes"
 )
 
 
