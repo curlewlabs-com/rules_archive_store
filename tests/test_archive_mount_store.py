@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import signal
+import stat
 import subprocess
 import time
 import unittest
@@ -87,6 +88,14 @@ class ArchiveMountStoreTest(ArchiveMountCase):
             path.name
             for path in holds.iterdir()
             if not path.name.startswith("namespace@")
+        )
+
+    def _sealed(self) -> bool:
+        """Whether a staged tree exists and every one has lost its write bits,
+        which the helper drops once the tree is extracted and checked."""
+        objects = self._objects()
+        return bool(objects) and all(
+            not stat.S_IMODE(path.stat().st_mode) & 0o222 for path in objects
         )
 
     def test_a_read_holds_what_it_mounts_and_rereads_an_entry_evicted_under_it(
@@ -274,9 +283,16 @@ class ArchiveMountStoreTest(ArchiveMountCase):
             ["true"],
             env={_PUBLISH_GATE: str(gate)},
         )
+        # The staging directory exists before the expander's trap does, so a
+        # signal sent as soon as it appears can kill the expander outright, as
+        # SIGKILL would, and leave the tree to an evictor; that is
+        # test_a_killed_expansion_is_removed_and_one_still_staging_is_kept's
+        # case, not this one's. Sealing the tree read-only comes after the trap
+        # and just before the gate, so wait for that.
         deadline = time.monotonic() + INFINITE
-        while not self._objects():
+        while not self._sealed():
             self.assertLess(time.monotonic(), deadline, "the expander never staged")
+            self.assertIsNone(action.poll(), action.stderr)
             time.sleep(0.05)
         self.assertTrue(process_group.signal_group(action.pid, signal.SIGTERM))
         # The shell runs its trap once the read it is blocked in returns.
