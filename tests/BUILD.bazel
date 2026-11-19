@@ -131,6 +131,15 @@ py_test(
 )
 
 py_test(
+    name = "test_eslint_exclusion",
+    srcs = ["test_eslint_exclusion.py"],
+    data = [
+        "//archive_store:archive_tree.ts",
+        "//archive_store:archive_tree_manifest.ts",
+    ],
+)
+
+py_test(
     name = "test_archive_tree",
     timeout = "moderate",
     srcs = ["test_archive_tree.py"],
