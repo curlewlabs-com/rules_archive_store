@@ -85,7 +85,7 @@ class _Joined(io.RawIOBase):
         return self._position
 
     @override
-    def readinto(self, buffer: memoryview) -> int:  # type: ignore[override]
+    def readinto(self, buffer: memoryview) -> int:  # type: ignore[override]  # pyright: ignore[reportIncompatibleMethodOverride] -- the narrower parameter is the contract this reader keeps
         if self._position >= self._starts[-1]:
             return 0
         # The last part starting at or before the position, which an empty
@@ -179,7 +179,7 @@ class PartWriter(io.RawIOBase):
         return self._part
 
     @override
-    def write(self, data: bytes) -> int:  # type: ignore[override]
+    def write(self, data: bytes) -> int:  # type: ignore[override]  # pyright: ignore[reportIncompatibleMethodOverride] -- the narrower parameter is the contract this writer keeps
         view = memoryview(data).cast("B")
         self.digest.update(view)
         while view:

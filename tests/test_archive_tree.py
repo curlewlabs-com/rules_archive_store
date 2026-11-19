@@ -269,7 +269,7 @@ class ArchiveTreeTest(unittest.TestCase):
             )
             for index in range(4)
         ]
-        reports = []
+        reports: list[bytes] = []
         for reader in readers:
             stdout, stderr = reader.communicate(timeout=INFINITE)
             self.assertEqual(reader.returncode, 0, stderr)

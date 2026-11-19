@@ -239,8 +239,8 @@ class ArchiveStoreEvictTest(unittest.TestCase):
             def _held(self, held_namespace: Path, name: str) -> bool:
                 if name == (namespace / os.readlink(namespace / stale)).name:
                     use(stale, _NOW)
-                result: bool = super()._held(held_namespace, name)
-                return result
+                result: bool = super()._held(held_namespace, name)  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType] -- Evictor is reached through a dynamic import
+                return result  # pyright: ignore[reportUnknownVariableType] -- see above
 
         budget = _tree_bytes(self._object(other))
         self._pass(0, evictor=Reread(self.store, budget, _KEEP))

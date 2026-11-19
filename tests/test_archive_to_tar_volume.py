@@ -72,7 +72,7 @@ def _unfolded_pairs(directory: Path) -> list[tuple[str, str]]:
     names = directory / "names"
     names.mkdir()
     by_inode: dict[int, str] = {}
-    missed = []
+    missed: list[tuple[str, str]] = []
     for character in candidates:
         path = names / f"x{character}"
         try:

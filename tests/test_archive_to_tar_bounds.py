@@ -73,11 +73,11 @@ class ArchiveToTarBoundsTest(ConversionTestCase):
         ):
             with self.subTest(suffix):
                 source = self.root / f"big{suffix}"
-                with tarfile.open(source, mode) as tar:  # type: ignore[call-overload]
+                with tarfile.open(source, mode) as tar:  # type: ignore[call-overload]  # pyright: ignore[reportCallIssue, reportArgumentType, reportUnknownVariableType] -- a mode chosen at run time, which typeshed lists only as literals
                     info = tarfile.TarInfo("tool-1.0/big.bin")
                     info.size = size
                     with zeros.open("rb") as stream:
-                        tar.addfile(info, stream)
+                        tar.addfile(info, stream)  # pyright: ignore[reportUnknownMemberType] -- tar is unresolved above
                 output = self.root / f"big{suffix}.out.tar.gz"
                 tracemalloc.start()
                 try:
@@ -150,7 +150,7 @@ class ArchiveToTarBoundsTest(ConversionTestCase):
         # so one past the bound must be refused from its size alone; zeros
         # keep it a few KiB on disk.
         big = archive_to_tar.EXTENDED_HEADER_MAX + 1
-        cases = {
+        cases: dict[str, tuple[int, str, dict[str, str]]] = {
             "PAX record": (
                 tarfile.PAX_FORMAT,
                 "tool-1.0/data",
@@ -183,10 +183,10 @@ class ArchiveToTarBoundsTest(ConversionTestCase):
         part = archive_to_tar.EXTENDED_HEADER_MAX // 2 + 1
 
         def header(kind: bytes) -> bytes:
-            created: bytes = tarfile.TarInfo._create_pax_generic_header(  # type: ignore[attr-defined]
+            created: bytes = tarfile.TarInfo._create_pax_generic_header(  # type: ignore[attr-defined]  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType, reportAttributeAccessIssue] -- tarfile's private header writer, the only way to build an oversized one
                 {"comment": "\0" * part}, kind, "utf-8"
             )
-            return created
+            return created  # pyright: ignore[reportUnknownVariableType] -- see above
 
         def member(name: str) -> bytes:
             built: bytes = tarfile.TarInfo(name).tobuf(tarfile.USTAR_FORMAT)
@@ -255,13 +255,13 @@ class ArchiveToTarBoundsTest(ConversionTestCase):
         # their member, like a PAX record or a GNU long name; a PAX sparse
         # 0.0 member's map comes from its records.
         big = archive_to_tar.EXTENDED_HEADER_MAX + 1
-        solaris: bytes = tarfile.TarInfo._create_pax_generic_header(  # type: ignore[attr-defined]
+        solaris: bytes = tarfile.TarInfo._create_pax_generic_header(  # type: ignore[attr-defined]  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType, reportAttributeAccessIssue] -- tarfile's private header writer, as above
             {"comment": "\0" * big}, tarfile.SOLARIS_XHDTYPE, "utf-8"
         )
         sources = {"Solaris extended header": self.root / "solaris.tar.gz"}
         sources["Solaris extended header"].write_bytes(
             gzip.compress(
-                solaris
+                solaris  # pyright: ignore[reportUnknownArgumentType] -- see above
                 + tarfile.TarInfo("tool-1.0/data").tobuf(tarfile.USTAR_FORMAT)
                 + bytes(1024),
                 mtime=0,

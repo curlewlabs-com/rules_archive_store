@@ -288,7 +288,7 @@ class ArchiveToTarTest(ConversionTestCase):
     def test_names_folded_cannot_judge_are_refused(self) -> None:
         # A control character no tree here holds, and a name that is not
         # UTF-8, which tarfile reads as a lone surrogate and APFS cannot store.
-        for index, name in enumerate(("tool-1.0/a\x01b", "tool-1.0/a\udcffb")):
+        for name in ("tool-1.0/a\x01b", "tool-1.0/a\udcffb"):
             with (
                 self.subTest(name=repr(name)),
                 self.assertRaises(archive_to_tar.ArchiveError),

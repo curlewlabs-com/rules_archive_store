@@ -88,7 +88,7 @@ import stat
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -502,7 +502,7 @@ class Evictor:
         return [name for name in self._store.names() if _NAMESPACE.fullmatch(name)]
 
     @contextlib.contextmanager
-    def _namespace(self, name: str) -> Iterator[Namespace | None]:
+    def _namespace(self, name: str) -> Generator[Namespace | None]:
         """The namespace `name`, opened from the store this pass locked, with
         its descriptors closed when the block ends; None when it has gone."""
         with contextlib.ExitStack() as opened:
