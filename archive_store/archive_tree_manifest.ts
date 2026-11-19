@@ -81,7 +81,7 @@ export function resolve(template: string, manifest: string): void {
       const fields = line.split("|");
       if (fields[0] !== "unit" || !fields[2]?.startsWith("@")) return line;
       const named = fs.readFileSync(fields[2].slice(1), "ascii");
-      fields[2] = checkDigest((named.split("\n")[0] ?? "").split(" ")[0]!);
+      fields[2] = checkDigest((named.split("\n")[0] ?? "").split(" ")[0]);
       return fields.join("|");
     });
   fs.writeFileSync(manifest, lines.join("\n"));
@@ -104,8 +104,8 @@ export function readManifest(file: string): Manifest {
     if (line === "") continue;
     const [kind, ...fields] = line.split("|");
     if (kind === "mount" && fields.length === 1 && mount === undefined) {
-      checkRelative("mount", fields[0]!);
-      mount = fields[0]!;
+      checkRelative("mount", fields[0]);
+      mount = fields[0];
     } else if (kind === "unit" && fields.length === 4) {
       const [dest, digest, archive, strip] = fields as [
         string,
@@ -123,10 +123,10 @@ export function readManifest(file: string): Manifest {
         fail(`link ${at} -> '${target}' is not a relative target`);
       links.push({ at, target });
     } else if (kind === "exec" && fields.length === 1) {
-      checkRelative("executable", fields[0]!);
-      if (executables.includes(fields[0]!))
+      checkRelative("executable", fields[0]);
+      if (executables.includes(fields[0]))
         fail(`executable '${fields[0]}' is given twice`);
-      executables.push(fields[0]!);
+      executables.push(fields[0]);
     } else {
       fail(`${file}: cannot read '${line}'`);
     }
@@ -167,7 +167,7 @@ if (import.meta.main) {
   try {
     if (argv[0] !== "--resolve" || argv.length !== 3)
       fail("usage: archive_tree_manifest.ts --resolve TEMPLATE MANIFEST");
-    resolve(argv[1]!, argv[2]!);
+    resolve(argv[1], argv[2]);
   } catch (error) {
     fs.writeSync(
       2,
