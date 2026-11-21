@@ -47,10 +47,18 @@ jobs:
         run: |
           notes="$RUNNER_TEMP/release-notes.md"
           python3 tools/prepare_release.py "$RELEASE_TAG" > "$notes"
-          notice="docs/release-notes/${RELEASE_TAG#v}.md"
-          if [ -f "$notice" ]; then
-            head -c "$(wc -c < "$notice")" "$notes" | cmp "$notice" -
-          fi
+          python3 - "$notes" <<'PYTHON'
+          import json
+          import sys
+          from pathlib import Path
+
+          version = json.loads(Path("dist/source.json").read_text())["version"]
+          notice = Path("docs/release-notes") / f"{version}.md"
+          if notice.is_file():
+              prefix = notice.read_bytes().decode().rstrip() + "\n\n"
+              if not Path(sys.argv[1]).read_bytes().decode().startswith(prefix):
+                  raise SystemExit(f"generated release notes must open with {notice}")
+          PYTHON
 
   lint:
     runs-on: ubuntu-24.04
