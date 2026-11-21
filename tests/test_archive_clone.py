@@ -322,6 +322,90 @@ class ArchiveCloneTest(unittest.TestCase):
         (self.destination / "lib/data").write_bytes(b"private")
         self.assertEqual((self.expansion / "lib/data").read_bytes(), _DATA)
 
+    def test_materialized_file_links_become_isolated_files_in_sealed_parents(
+        self,
+    ) -> None:
+        if not _volume_clones(self.base):
+            self.skipTest("this volume serves no copy-on-write clones")
+        external = self.base / "declared-file"
+        external.write_bytes(_DATA)
+        external.chmod(0o444)
+        parent = self.expansion / "lib"
+        parent.chmod(0o755)
+        (parent / "input").symlink_to(external)
+        parent.chmod(0o555)
+        os.utime(parent, ns=(_MTIME_NS, _MTIME_NS))
+
+        # Bazel supplies the executable that non-Python actions declare. A
+        # direct suite invocation runs the same entrypoint with this Python.
+        executable = os.environ.get("ARCHIVE_CLONE_CLI")
+        module_path = archive_clone.__file__
+        assert module_path is not None
+        command = (
+            [executable]
+            if executable
+            else [
+                sys.executable,
+                str(Path(module_path).with_name("clone_cli.py")),
+            ]
+        )
+        subprocess.run(
+            [
+                *command,
+                "--materialize-file-links",
+                "--keep-directory-modes",
+                "--writable-files",
+                str(self.mount),
+                str(self.destination),
+            ],
+            check=True,
+        )
+        directory = self.destination / "lib"
+        self.assertEqual(stat.S_IMODE(directory.stat().st_mode), 0o555)
+        self.assertEqual(directory.stat().st_mtime_ns, _MTIME_NS)
+        # Both an internally relative link and a declared external backing
+        # file must become regular files with independent contents.
+        for file in (self.destination / "alias", directory / "input"):
+            self.assertTrue(stat.S_ISREG(file.lstat().st_mode))
+            self.assertEqual(file.read_bytes(), _DATA)
+            file.write_bytes(b"private")
+        self.assertEqual(external.read_bytes(), _DATA)
+        self.assertEqual((self.expansion / "lib/data").read_bytes(), _DATA)
+
+    def test_materialization_refuses_directory_and_dangling_links(self) -> None:
+        self.expansion.chmod(0o755)
+        link = self.expansion / "invalid"
+        for target, error in (
+            (self.base, ValueError),
+            (self.base / "missing", OSError),
+        ):
+            with self.subTest(target=target):
+                link.symlink_to(target)
+                with self.assertRaises(error):
+                    archive_clone.clone(
+                        self.mount, self.destination, materialize_file_links=True
+                    )
+                self.assertFalse(os.path.lexists(self.destination))
+                link.unlink()
+
+    def test_materialized_file_on_another_volume_never_streams(self) -> None:
+        if sys.platform != "linux":
+            self.skipTest("uses a Linux tmpfs")
+        shm = Path("/dev/shm")
+        if not shm.is_dir() or shm.stat().st_dev == self.base.stat().st_dev:
+            self.skipTest("no separate tmpfs")
+        with tempfile.TemporaryDirectory(dir=shm) as temporary:
+            foreign = Path(temporary) / "payload"
+            foreign.write_bytes(_DATA)
+            self.expansion.chmod(0o755)
+            (self.expansion / "foreign").symlink_to(foreign)
+            with self.assertRaises(OSError):
+                archive_clone.clone(
+                    self.mount, self.destination, materialize_file_links=True
+                )
+            self.assertFalse(os.path.lexists(self.destination))
+            self.assertEqual(foreign.read_bytes(), _DATA)
+
     def test_special_source_is_refused_before_cloning(self) -> None:
         self.expansion.chmod(0o755)
         fifo = self.expansion / "fifo"

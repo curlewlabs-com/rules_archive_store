@@ -55,13 +55,16 @@ def clone(
     *,
     writable_files: bool = False,
     writable_directories: bool = True,
+    materialize_file_links: bool = False,
 ) -> int:
     """Clone the directory or regular file `mount` names to the new path `destination`.
 
     The source, its entries and their metadata must stay stable until the
     clone finishes, as they do in a held archive expansion. The destination
     path is exclusively the caller's until return, and its parent must let the
-    caller create and remove its private clone.
+    caller create and remove its private clone. With materialize_file_links,
+    the caller also supplies and holds every link's final regular file, even
+    where that file lies outside the tree.
 
     Returns how many entries were made owner-writable. Raises OSError where the
     platform or the volume cannot clone, FileExistsError when `destination`
@@ -75,16 +78,16 @@ def clone(
         raise ValueError(f"clone source is not a regular file or directory: {mount}")
     # On Darwin these modes must avoid the ACL changes clonefile makes.
     # The original directory operation keeps its native ACL inheritance.
-    mode_only = stat.S_ISREG(mode) or not writable_directories
-    _check_source(source, metadata, mode_only)
+    mode_only = stat.S_ISREG(mode) or not writable_directories or materialize_file_links
+    links = _check_source(source, metadata, mode_only, materialize_file_links)
     # Each platform sits in its own arm: mypy skips an arm the checking
     # platform rules out, but reports code after an arm that always ends.
     if sys.platform == "darwin":
         if mode_only:
             _check_acl(destination.parent.resolve(strict=True))
-        make = functools.partial(_clonefile, source, destination)
+        make = functools.partial(_clone_macos, source, destination, links)
     elif sys.platform == "linux":
-        make = functools.partial(_reflink, source, destination)
+        make = functools.partial(_reflink, source, destination, materialize_file_links)
     else:
         raise OSError(f"no copy-on-write clone on {sys.platform}: {destination}")
     return _create(
@@ -131,7 +134,12 @@ def _create(
         raise
 
 
-def _check_source(source: Path, metadata: os.stat_result, mode_only: bool) -> None:
+def _check_source(
+    source: Path,
+    metadata: os.stat_result,
+    mode_only: bool,
+    materialize_file_links: bool,
+) -> dict[Path, list[tuple[str, Path]]]:
     def check(path: Path, info: os.stat_result) -> None:
         if not (
             stat.S_ISREG(info.st_mode)
@@ -158,6 +166,7 @@ def _check_source(source: Path, metadata: os.stat_result, mode_only: bool) -> No
             if info.st_flags & locked:
                 raise ValueError(f"clone source has a locked entry: {path}")
 
+    links: dict[Path, list[tuple[str, Path]]] = {}
     check(source, metadata)
     pending = [source] if stat.S_ISDIR(metadata.st_mode) else []
     while pending:
@@ -168,6 +177,19 @@ def _check_source(source: Path, metadata: os.stat_result, mode_only: bool) -> No
                 check(path, info)
                 if stat.S_ISDIR(info.st_mode):
                     pending.append(path)
+                elif materialize_file_links and stat.S_ISLNK(info.st_mode):
+                    target = path.resolve(strict=True)
+                    target_info = target.stat()
+                    if not stat.S_ISREG(target_info.st_mode):
+                        raise ValueError(
+                            f"materialized link must name a regular file: {path}"
+                        )
+                    check(target, target_info)
+                    if sys.platform == "darwin":
+                        links.setdefault(path.parent.relative_to(source), []).append(
+                            (entry.name, target)
+                        )
+    return links
 
 
 def _check_acl(source: Path) -> None:
@@ -204,13 +226,41 @@ def _clonefile(source: Path, destination: Path) -> None:
         raise OSError(code, os.strerror(code), str(source), None, str(destination))
 
 
-def _reflink(source: Path, destination: Path) -> None:
+def _clone_macos(
+    source: Path, destination: Path, links: dict[Path, list[tuple[str, Path]]]
+) -> None:
+    _clonefile(source, destination)
+    # clonefile handles an ordinary tree in one call. Only parents containing
+    # Bazel-style file links need extra directory writes and a file clone.
+    for relative, children in links.items():
+        parent = destination / relative
+        info = (source / relative).stat()
+        mode = stat.S_IMODE(parent.stat().st_mode)
+        if not mode & stat.S_IWUSR:
+            parent.chmod(mode | stat.S_IWUSR)
+        for name, target in children:
+            child = parent / name
+            child.unlink()
+            _clonefile(target, child)
+        if not mode & stat.S_IWUSR:
+            parent.chmod(mode)
+        # Replacing the directory entries must not introduce the wall clock
+        # into builds that preserve their input directory timestamps.
+        os.utime(parent, ns=(info.st_atime_ns, info.st_mtime_ns))
+
+
+def _reflink(source: Path, destination: Path, materialize_file_links: bool) -> None:
     cp = shutil.which("cp", path=_SYSTEM_PATH)
     if cp is None:
         raise OSError(f"no cp on {_SYSTEM_PATH} to clone {source}")
     # --reflink=always fails a file the volume cannot clone, where auto would
     # copy it. Mode and times are kept as clonefile(2) keeps them.
-    arguments = ["-R", "-P", "--reflink=always", "--preserve=mode,timestamps"]
+    arguments = [
+        "-R",
+        "-L" if materialize_file_links else "-P",
+        "--reflink=always",
+        "--preserve=mode,timestamps",
+    ]
     shown: list[str] = []
     errors = 0
     with subprocess.Popen(

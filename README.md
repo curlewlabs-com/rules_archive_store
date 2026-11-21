@@ -131,6 +131,17 @@ removes its own partial result. The directory's permissions and inherited ACLs
 must allow that removal. A caller removing a sealed tree must first restore owner
 write and search permission on its directories without following links.
 
+Build systems can present declared files as symlinks to backing objects.
+For a trusted input tree whose links all name stable regular files, opt in
+to `materialize_file_links=True`. Each link becomes a private clone of its
+target, including a target outside the tree. A dangling link or directory
+link fails the operation. All backing files must be on the destination
+volume. On macOS this option requires mode-based access as above.
+
+An action in another language can declare and run the executable
+`@curlewlabs_rules_archive_store//archive_store:archive_clone`. Pass
+`--materialize-file-links` before its source and new destination paths.
+
 A linked tree of many archives (`archive_tree`, and the launchers'
 `archive_tree_*` and `tree` forms) is built on macOS only, with `clonefile(2)`,
 under a Bun the consumer names, since a tree's consumer runs Bun to use it:
