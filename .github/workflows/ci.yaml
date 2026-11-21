@@ -44,7 +44,13 @@ jobs:
       - name: Verify a prepared release archive
         env:
           RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-        run: python3 tools/prepare_release.py "$RELEASE_TAG" > "$RUNNER_TEMP/release-notes.md"
+        run: |
+          notes="$RUNNER_TEMP/release-notes.md"
+          python3 tools/prepare_release.py "$RELEASE_TAG" > "$notes"
+          notice="docs/release-notes/${RELEASE_TAG#v}.md"
+          if [ -f "$notice" ]; then
+            head -c "$(wc -c < "$notice")" "$notes" | cmp "$notice" -
+          fi
 
   lint:
     runs-on: ubuntu-24.04

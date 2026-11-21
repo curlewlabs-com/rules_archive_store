@@ -92,11 +92,14 @@ class ArchiveBinaryTest(unittest.TestCase):
     def test_relative_scratch_parent_survives_a_child_directory_change(self) -> None:
         # The system temporary parent can be relative to the runfiles tree;
         # the clone destination the command receives must survive a chdir.
-        parent = os.path.relpath(self.temporary)
+        parent = str(
+            Path("tests") / os.path.relpath(self.temporary, Path("tests").resolve())
+        )
         result = self._run(
             "tar",
             extra={
                 "RUNNER_TEMP": parent,
+                "CDPATH": ".",
                 "PROBE_CHANGE_DIRECTORY": str(self.temporary),
             },
         )

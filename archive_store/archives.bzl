@@ -592,7 +592,7 @@ if [ {clone_scratch} = 1 ] && [ -z "${{RUNNER_TEMP:-}}" ] && [ -n "${{BUILD_EXEC
     base=$BUILD_EXECROOT/bazel-out
 fi
 root=$(mktemp -d "$base/archive-mounts.XXXXXX")
-root=$(cd -P "$root" && pwd -P)
+root=$(CDPATH= cd -P "$root" && pwd -P)
 cleanup() {{
     status=$?
     cleanup_status=0
