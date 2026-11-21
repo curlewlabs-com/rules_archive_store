@@ -13,8 +13,15 @@ is specific to Buildbarn beyond the examples.
 ## The contract
 
 - **A store on the build directory's volume.** A directory beside the build
-  directory, on the same volume, so a linked tree can be cloned into an
-  action's directory; a clone across volumes fails.
+  directory, on the same volume, so a linked tree, or a mount an action makes
+  writable, can be cloned into an action's directory; a clone across volumes
+  fails. A writable clone
+  ([`archive_clone.py`](../archive_store/archive_clone.py)) also needs a volume
+  that clones: APFS on macOS, where it costs one `clonefile(2)` for the tree,
+  and on Linux XFS with reflink or Btrfs, where it costs one reflink per file.
+  Either way it writes metadata, not the tree's bytes, plus a mode change per
+  directory and, if the caller asks, per file. On any other volume it fails
+  rather than copying the tree.
 - **Writable by every action account.** The actions themselves expand archives
   into it, so every account an action runs as writes it: on Buildbarn, every
   runner's account, through a group they share, with the directory set-group-ID

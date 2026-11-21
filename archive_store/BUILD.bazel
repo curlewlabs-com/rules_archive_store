@@ -37,6 +37,13 @@ py_library(
     ],
 )
 
+# A writable clone of a mounted tree, for a consumer whose action runs Python.
+py_library(
+    name = "archive_clone_lib",
+    srcs = ["archive_clone.py"],
+    imports = ["."],
+)
+
 py_library(
     name = "archive_store_evict_lib",
     srcs = ["archive_store_evict.py"],

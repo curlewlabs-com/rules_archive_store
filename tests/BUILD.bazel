@@ -50,6 +50,12 @@ py_test(
 )
 
 py_test(
+    name = "test_archive_clone",
+    srcs = ["test_archive_clone.py"],
+    deps = ["//archive_store:archive_clone_lib"],
+)
+
+py_test(
     name = "test_archive_mount",
     timeout = "moderate",
     srcs = ["test_archive_mount.py"],

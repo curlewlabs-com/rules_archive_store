@@ -161,7 +161,9 @@ that instance reuse the expansion.
   store's group. Actions on one executor instance are trusted with each other's
   trees, as a shared build directory already assumes. A consumer that writes
   into a tree needs a writable copy of it, which `archive_mount.sh` does not
-  make; a linked tree's reader can ask for one ([Linked trees](#linked-trees)).
+  make: the command clones its mount with
+  [`archive_clone.py`](../archive_store/archive_clone.py), and a linked tree's
+  reader can ask for one ([Linked trees](#linked-trees)).
 - **Digest.** A warm expansion is reused by digest without hashing the archive
   again, which on every action would cost what the store saves. The conversion
   writes the digest of the tar it wrote, only once the declared archive matched

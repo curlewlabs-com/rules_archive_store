@@ -98,6 +98,22 @@ my_rule = rule(
 )
 ```
 
+A command that writes into a mounted tree clones the mount first, from the
+Python its action runs, with
+`@curlewlabs_rules_archive_store//archive_store:archive_clone_lib`:
+
+```python
+import archive_clone
+
+# Directories become owner-writable; writable_files does the same for files.
+archive_clone.clone(mounts / "sdk", work / "sdk", writable_files=True)
+```
+
+The clone shares the expansion's blocks, so it costs metadata. It needs a
+volume that clones, the store's own ([docs/executor.md](docs/executor.md)), and
+fails elsewhere; `archive_clone.copy` is the plain copy for a host that cannot
+clone.
+
 A linked tree of many archives (`archive_tree`, and the launchers'
 `archive_tree_*` and `tree` forms) is built on macOS only, with `clonefile(2)`,
 under a Bun the consumer names, since a tree's consumer runs Bun to use it:
