@@ -268,7 +268,7 @@ class ArchiveCloneTest(unittest.TestCase):
                         archive_clone.clone(mount, self.destination)
                     self.assertFalse(os.path.lexists(self.destination))
 
-    def test_a_file_with_an_acl_is_refused_before_losing_its_restrictions(self) -> None:
+    def test_a_sealed_clone_refuses_to_drop_an_acl(self) -> None:
         if sys.platform != "darwin":
             self.skipTest("macOS extended ACL")
         for source in (self.expansion, self.expansion / "bin/tool"):
@@ -279,10 +279,47 @@ class ArchiveCloneTest(unittest.TestCase):
                 for mount in (source, self.mount):
                     with self.subTest(source=source, mount=mount):
                         with self.assertRaisesRegex(ValueError, "extended ACL"):
-                            archive_clone.clone(mount, self.destination)
+                            archive_clone.clone(
+                                mount, self.destination, writable_directories=False
+                            )
                         self.assertFalse(os.path.lexists(self.destination))
             finally:
                 subprocess.run(["/bin/chmod", "-N", str(source)], check=True)
+
+    def test_mode_based_clones_refuse_destination_acl_inheritance(self) -> None:
+        if sys.platform != "darwin":
+            self.skipTest("macOS extended ACL")
+        parent = self.destination.parent
+        subprocess.run(
+            [
+                "/bin/chmod",
+                "+a",
+                "everyone allow write,file_inherit,directory_inherit",
+                str(parent),
+            ],
+            check=True,
+        )
+        # The inherited grant actually overrides a read-only file's mode. A
+        # sealed clone here would therefore allow the write it should refuse.
+        inherited = parent / "inherited"
+        inherited.touch(mode=0o444)
+        inherited.write_bytes(b"ACL permits the write")
+        for source in (self.mount, self.expansion / "bin/tool"):
+            with self.assertRaisesRegex(ValueError, "extended ACL"):
+                archive_clone.clone(
+                    source, self.destination, writable_directories=False
+                )
+            self.assertFalse(os.path.lexists(self.destination))
+
+    def test_default_tree_clone_accepts_an_executor_store_acl(self) -> None:
+        if sys.platform != "darwin":
+            self.skipTest("macOS extended ACL")
+        subprocess.run(
+            ["/bin/chmod", "+a", "everyone allow read", str(self.expansion)], check=True
+        )
+        archive_clone.clone(self.mount, self.destination, writable_files=True)
+        (self.destination / "lib/data").write_bytes(b"private")
+        self.assertEqual((self.expansion / "lib/data").read_bytes(), _DATA)
 
     def test_special_source_is_refused_before_cloning(self) -> None:
         self.expansion.chmod(0o755)

@@ -72,10 +72,15 @@ def clone(
     mode = metadata.st_mode
     if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
         raise ValueError(f"clone source is not a regular file or directory: {mount}")
-    _check_source(source, metadata)
+    # File and mode-preserving clones require modes to determine access. The
+    # original directory operation keeps clonefile's native ACL inheritance.
+    mode_only = stat.S_ISREG(mode) or not writable_directories
+    _check_source(source, metadata, mode_only)
     # Each platform sits in its own arm: mypy skips an arm the checking
     # platform rules out, but reports code after an arm that always ends.
     if sys.platform == "darwin":
+        if mode_only:
+            _check_acl(destination.parent.resolve(strict=True))
         make = functools.partial(_clonefile, source, destination)
     elif sys.platform == "linux":
         make = functools.partial(_reflink, source, destination)
@@ -125,7 +130,7 @@ def _create(
         raise
 
 
-def _check_source(source: Path, metadata: os.stat_result) -> None:
+def _check_source(source: Path, metadata: os.stat_result, mode_only: bool) -> None:
     def check(path: Path, info: os.stat_result) -> None:
         if not (
             stat.S_ISREG(info.st_mode)
@@ -147,7 +152,8 @@ def _check_source(source: Path, metadata: os.stat_result) -> None:
                 | stat.SF_APPEND
                 | stat.SF_NOUNLINK
             )
-            _check_acl(path)
+            if mode_only:
+                _check_acl(path)
             if info.st_flags & locked:
                 raise ValueError(f"clone source has a locked entry: {path}")
 
@@ -164,8 +170,8 @@ def _check_source(source: Path, metadata: os.stat_result) -> None:
 
 
 def _check_acl(source: Path) -> None:
-    # Darwin clonefile normally drops the source ACL. Copying it could instead
-    # deny the caller removal of the new file. Archive members have no ACL.
+    # clonefile omits source ACLs and inherits destination entries. Either can
+    # change access even when all POSIX mode bits are preserved.
     get = _library().acl_get_link_np
     get.argtypes = [ctypes.c_char_p, ctypes.c_int]
     get.restype = ctypes.c_void_p
@@ -180,7 +186,7 @@ def _check_acl(source: Path) -> None:
     free.argtypes = [ctypes.c_void_p]
     free.restype = ctypes.c_int
     free(acl)
-    raise ValueError(f"clone source has an extended ACL: {source}")
+    raise ValueError(f"clone requires a path without an extended ACL: {source}")
 
 
 @functools.cache
