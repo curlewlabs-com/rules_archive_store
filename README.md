@@ -115,10 +115,12 @@ fails elsewhere. `archive_clone.copy` copies a directory for a host that
 cannot clone. Both refuse a tree with a link that would resolve outside it.
 
 A clone can also take a path or mount that names a regular file. A file with
-set-ID permissions is refused because cloning gives it a new owner. For a
+set-ID permissions is refused because cloning gives it a new owner. A direct
+source must provide the same stability as a held expansion: its path, entries
+and their metadata stay unchanged until the clone finishes. For a
 sealed tree, `writable_directories=False` with the default file policy leaves
 the filesystem clone's permissions alone. On macOS a standalone file or a
-sealed tree is checked for immutable, append-only, restricted and no-unlink
+sealed tree is checked for immutable, append-only and no-unlink
 flags before cloning. A caller removing a sealed tree must first restore owner
 write and search permission on its directories without following links.
 

@@ -56,6 +56,9 @@ def clone(
 ) -> int:
     """Clone the directory or regular file `mount` names to the new path `destination`.
 
+    The source, its entries and their metadata must stay stable until the
+    clone finishes, as they do in a held archive expansion.
+
     Returns how many entries were made owner-writable. Raises OSError where the
     platform or the volume cannot clone, FileExistsError when `destination`
     exists, and ValueError for a link whose resolution leaves the clone.
@@ -134,7 +137,6 @@ def _check_removable_source(source: Path, metadata: os.stat_result) -> None:
             | stat.UF_APPEND
             | stat.SF_APPEND
             | stat.SF_NOUNLINK
-            | stat.SF_RESTRICTED
         )
 
         def check(path: Path, info: os.stat_result) -> None:
