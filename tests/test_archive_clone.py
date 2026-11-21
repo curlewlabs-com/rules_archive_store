@@ -388,6 +388,32 @@ class ArchiveCloneTest(unittest.TestCase):
                 self.assertFalse(os.path.lexists(self.destination))
                 link.unlink()
 
+    def test_materialization_requires_a_kernel_readable_link(self) -> None:
+        source = self.base / "linked-tree"
+        source.mkdir()
+        target = self.base / "backing"
+        target.write_bytes(_DATA)
+        # Resolving each hop in user space can accept a link the kernel cannot open.
+        for index in range(100):
+            link = self.base / f"hop-{index}"
+            link.symlink_to(target)
+            target = link
+        (source / "input").symlink_to(target)
+        with self.assertRaises(OSError):
+            archive_clone.clone(source, self.destination, materialize_file_links=True)
+        self.assertFalse(os.path.lexists(self.destination))
+
+    def test_materialization_uses_the_file_validated_by_the_caller(self) -> None:
+        if sys.platform != "linux" or not _volume_clones(self.base):
+            self.skipTest("needs Linux procfs and a reflink-capable volume")
+        source = self.base / "linked-tree"
+        source.mkdir()
+        with (self.expansion / "lib/data").open("rb") as held:
+            # The child running GNU cp has its own descriptor table.
+            (source / "input").symlink_to(f"/proc/self/fd/{held.fileno()}")
+            archive_clone.clone(source, self.destination, materialize_file_links=True)
+        self.assertEqual((self.destination / "input").read_bytes(), _DATA)
+
     def test_materialized_file_on_another_volume_never_streams(self) -> None:
         if sys.platform != "linux":
             self.skipTest("uses a Linux tmpfs")
@@ -397,11 +423,12 @@ class ArchiveCloneTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=shm) as temporary:
             foreign = Path(temporary) / "payload"
             foreign.write_bytes(_DATA)
-            self.expansion.chmod(0o755)
-            (self.expansion / "foreign").symlink_to(foreign)
+            source = self.base / "linked-tree"
+            source.mkdir()
+            (source / "foreign").symlink_to(foreign)
             with self.assertRaises(OSError):
                 archive_clone.clone(
-                    self.mount, self.destination, materialize_file_links=True
+                    source, self.destination, materialize_file_links=True
                 )
             self.assertFalse(os.path.lexists(self.destination))
             self.assertEqual(foreign.read_bytes(), _DATA)

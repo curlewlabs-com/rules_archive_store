@@ -136,7 +136,9 @@ For a trusted input tree whose links all name stable regular files, opt in
 to `materialize_file_links=True`. Each link becomes a private clone of its
 target, including a target outside the tree. A dangling link or directory
 link fails the operation. All backing files must be on the destination
-volume. On macOS this option requires mode-based access as above.
+volume. The consuming action must declare each backing file's contents as an
+input. A Bazel symlink declared with `target_path` tracks only its link text.
+On macOS this option requires mode-based access as above.
 
 An action in another language can declare and run the executable
 `@curlewlabs_rules_archive_store//archive_store:archive_clone`. Pass

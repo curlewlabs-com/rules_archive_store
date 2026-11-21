@@ -85,13 +85,17 @@ def clone(
     if sys.platform == "darwin":
         if mode_only:
             _check_acl(destination.parent.resolve(strict=True))
-        make = functools.partial(_clone_macos, source, destination, links)
+        backend = _clonefile
     elif sys.platform == "linux":
-        make = functools.partial(_reflink, source, destination, materialize_file_links)
+        backend = _reflink
     else:
         raise OSError(f"no copy-on-write clone on {sys.platform}: {destination}")
     return _create(
-        destination, make, stat.S_IFMT(mode), writable_files, writable_directories
+        destination,
+        functools.partial(_clone_tree_or_file, source, destination, links, backend),
+        stat.S_IFMT(mode),
+        writable_files,
+        writable_directories,
     )
 
 
@@ -178,17 +182,21 @@ def _check_source(
                 if stat.S_ISDIR(info.st_mode):
                     pending.append(path)
                 elif materialize_file_links and stat.S_ISLNK(info.st_mode):
+                    # The kernel must accept the original link, including its
+                    # traversal limit. Clone the same held file on either OS
+                    # even when a subprocess would resolve the link differently.
+                    target_info = path.stat()
                     target = path.resolve(strict=True)
-                    target_info = target.stat()
+                    if not os.path.samestat(target_info, target.stat()):
+                        raise ValueError(f"unstable materialized link: {path}")
                     if not stat.S_ISREG(target_info.st_mode):
                         raise ValueError(
                             f"materialized link must name a regular file: {path}"
                         )
                     check(target, target_info)
-                    if sys.platform == "darwin":
-                        links.setdefault(path.parent.relative_to(source), []).append(
-                            (entry.name, target)
-                        )
+                    links.setdefault(path.parent.relative_to(source), []).append(
+                        (entry.name, target)
+                    )
     return links
 
 
@@ -226,11 +234,14 @@ def _clonefile(source: Path, destination: Path) -> None:
         raise OSError(code, os.strerror(code), str(source), None, str(destination))
 
 
-def _clone_macos(
-    source: Path, destination: Path, links: dict[Path, list[tuple[str, Path]]]
+def _clone_tree_or_file(
+    source: Path,
+    destination: Path,
+    links: dict[Path, list[tuple[str, Path]]],
+    backend: Callable[[Path, Path], None],
 ) -> None:
-    _clonefile(source, destination)
-    # clonefile handles an ordinary tree in one call. Only parents containing
+    backend(source, destination)
+    # The native backend handles an ordinary tree in one call. Only parents containing
     # Bazel-style file links need extra directory writes and a file clone.
     for relative, children in links.items():
         parent = destination / relative
@@ -241,7 +252,7 @@ def _clone_macos(
         for name, target in children:
             child = parent / name
             child.unlink()
-            _clonefile(target, child)
+            backend(target, child)
         if not mode & stat.S_IWUSR:
             parent.chmod(mode)
         # Replacing the directory entries must not introduce the wall clock
@@ -249,7 +260,7 @@ def _clone_macos(
         os.utime(parent, ns=(info.st_atime_ns, info.st_mtime_ns))
 
 
-def _reflink(source: Path, destination: Path, materialize_file_links: bool) -> None:
+def _reflink(source: Path, destination: Path) -> None:
     cp = shutil.which("cp", path=_SYSTEM_PATH)
     if cp is None:
         raise OSError(f"no cp on {_SYSTEM_PATH} to clone {source}")
@@ -257,7 +268,7 @@ def _reflink(source: Path, destination: Path, materialize_file_links: bool) -> N
     # copy it. Mode and times are kept as clonefile(2) keeps them.
     arguments = [
         "-R",
-        "-L" if materialize_file_links else "-P",
+        "-P",
         "--reflink=always",
         "--preserve=mode,timestamps",
     ]
