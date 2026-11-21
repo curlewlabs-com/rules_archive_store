@@ -154,7 +154,7 @@ use_private_store() {
     # The trap assigns _trap_rc itself, which shellcheck does not follow.
     # shellcheck disable=SC2154
     trap '_trap_rc=$?; [ "$RUN_COMPLETE" = 1 ] || [ "$_trap_rc" -ne 0 ] || _trap_rc=1
-        discard "$private_store" || { [ "$_trap_rc" -ne 0 ] || _trap_rc=1; }; exit "$_trap_rc"' EXIT
+        discard "$private_store" || [ "$_trap_rc" -ne 0 ] || exit 1; exit "$_trap_rc"' EXIT
     trap 'exit 129' HUP
     trap 'exit 130' INT
     trap 'exit 143' TERM
