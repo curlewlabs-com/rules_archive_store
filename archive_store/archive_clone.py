@@ -16,9 +16,15 @@ copy, for a caller that chose it on a host with no copy-on-write filesystem.
 
 Each leaves every directory owner-writable, so whatever removes the tree can,
 and with `writable_files` every regular file too, for a command that rewrites
-them; otherwise files keep the store's modes, which saves a call per file.
-Either way nothing is left at the destination when it fails. This is
-standard-library Python, for a consumer whose action already runs Python.
+them; otherwise files keep the store's modes, which saves a call per file. A
+hard link within the tree becomes a file of its own, as clonefile(2) makes it.
+A symlink that resolves outside the result fails it: the mount resolved that
+link inside the expansion, as one that climbs out of a stripped prefix does,
+and the result would read something else there. `destination` is a new path
+only the caller writes; a failure leaves nothing at it.
+
+This is standard-library Python, for a consumer whose action already runs
+Python.
 """
 
 from __future__ import annotations
@@ -36,32 +42,35 @@ from pathlib import Path
 # The utilities come from the system, whatever PATH the action has, as
 # archive_mount.sh's do.
 _SYSTEM_PATH = "/usr/bin:/bin"
+# cp goes on past each file it cannot clone, so its output can name every file
+# in the tree; a failure reports this many of its lines and their count.
+_SHOWN_ERRORS = 3
 
 
 def clone(mount: Path, destination: Path, *, writable_files: bool = False) -> int:
     """Clone the tree `mount` names to the new path `destination`.
 
     Returns how many entries were made owner-writable. Raises OSError where the
-    platform or the volume cannot clone, and FileExistsError when
-    `destination` exists.
+    platform or the volume cannot clone, FileExistsError when `destination`
+    exists, and ValueError for a link that resolves outside the clone.
     """
     source = _expansion(mount)
     # Each platform sits in its own arm: mypy skips an arm the checking
     # platform rules out, but reports code after an arm that always ends.
     if sys.platform == "darwin":
-        _create(destination, lambda: _clonefile(source, destination))
+        make = functools.partial(_clonefile, source, destination)
     elif sys.platform == "linux":
-        _create(destination, lambda: _reflink(source, destination))
+        make = functools.partial(_reflink, source, destination)
     else:
         raise OSError(f"no copy-on-write clone on {sys.platform}: {destination}")
-    return _make_writable(destination, writable_files)
+    return _create(destination, make, writable_files)
 
 
 def copy(mount: Path, destination: Path, *, writable_files: bool = False) -> int:
     """`clone` as a plain copy of every byte, for a host that cannot clone."""
     source = _expansion(mount)
-    _create(destination, lambda: shutil.copytree(source, destination, symlinks=True))
-    return _make_writable(destination, writable_files)
+    make = functools.partial(shutil.copytree, source, destination, symlinks=True)
+    return _create(destination, make, writable_files)
 
 
 def _expansion(mount: Path) -> Path:
@@ -72,11 +81,12 @@ def _expansion(mount: Path) -> Path:
     return source
 
 
-def _create(destination: Path, make: Callable[[], object]) -> None:
+def _create(destination: Path, make: Callable[[], object], files: bool) -> int:
     if os.path.lexists(destination):
         raise FileExistsError(f"clone destination exists: {destination}")
     try:
         make()
+        return _finish(destination, files)
     except BaseException:
         # A failed clone or copy can leave part of a tree, and nothing else
         # made one there, since the destination was absent.
@@ -113,25 +123,37 @@ def _reflink(source: Path, destination: Path) -> None:
         check=False,
     )
     if result.returncode != 0:
+        errors = result.stderr.splitlines()
         raise OSError(
             f"cp could not clone {source} to {destination}"
-            f" (exit {result.returncode}): {result.stderr.strip()}"
+            f" (exit {result.returncode}, {len(errors)} error lines): "
+            + "; ".join(errors[:_SHOWN_ERRORS])
         )
 
 
-def _make_writable(root: Path, files: bool) -> int:
-    def unreadable(error: OSError) -> None:
-        # os.walk skips a directory it cannot list unless told otherwise,
-        # which would leave that subtree unremovable.
-        raise error
-
-    changed = 0
-    for directory, _, names in os.walk(root, onerror=unreadable):
-        changed += _add_owner_write(Path(directory))
-        if files:
-            for name in names:
-                path = Path(directory, name)
-                if stat.S_ISREG(path.lstat().st_mode):
+def _finish(root: Path, files: bool) -> int:
+    """Give owner write where the caller asked for it and check every link;
+    return how many entries were made writable."""
+    inside = Path(os.path.realpath(root))
+    changed = _add_owner_write(root)
+    pending = [root]
+    while pending:
+        directory = pending.pop()
+        with os.scandir(directory) as listing:
+            for entry in listing:
+                path = Path(entry.path)
+                if entry.is_symlink():
+                    # A dangling link is kept, as the store keeps it, but it
+                    # too must stay inside the tree.
+                    if not Path(os.path.realpath(path)).is_relative_to(inside):
+                        raise ValueError(
+                            f"link resolves outside the clone: {path}"
+                            f" -> {os.readlink(path)}"
+                        )
+                elif entry.is_dir(follow_symlinks=False):
+                    changed += _add_owner_write(path)
+                    pending.append(path)
+                elif files and entry.is_file(follow_symlinks=False):
                     changed += _add_owner_write(path)
     return changed
 

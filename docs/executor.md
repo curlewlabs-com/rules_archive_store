@@ -18,10 +18,10 @@ is specific to Buildbarn beyond the examples.
   fails. A writable clone
   ([`archive_clone.py`](../archive_store/archive_clone.py)) also needs a volume
   that clones: APFS on macOS, where it costs one `clonefile(2)` for the tree,
-  and on Linux XFS with reflink or Btrfs, where it costs one reflink per file.
-  Either way it writes metadata, not the tree's bytes, plus a mode change per
-  directory and, if the caller asks, per file. On any other volume it fails
-  rather than copying the tree.
+  and on Linux a filesystem that serves reflinks, such as XFS made with them or
+  Btrfs, where it costs one reflink per file. Either way it writes metadata,
+  not the tree's bytes, plus a mode change per directory and, if the caller
+  asks, per file. On any other volume it fails rather than copying the tree.
 - **Writable by every action account.** The actions themselves expand archives
   into it, so every account an action runs as writes it: on Buildbarn, every
   runner's account, through a group they share, with the directory set-group-ID
@@ -49,8 +49,9 @@ is specific to Buildbarn beyond the examples.
   [`archive_parts.bzl`](../archive_store/archive_parts.bzl)), so the remote
   cache must accept a blob of that size.
 - **System `sh`, `tar` and `shasum`** on every host that runs an action reading
-  an archive, and Bun, named by the consumer, on a macOS host that runs one
-  reading a linked tree.
+  an archive, Bun, named by the consumer, on a macOS host that runs one
+  reading a linked tree, and GNU `cp` on a Linux host that runs one making a
+  writable clone.
 
 ## On macOS, how the worker lays out other inputs
 

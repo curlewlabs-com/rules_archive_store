@@ -9,6 +9,7 @@ whose size is the cost the store exists to remove.
 
 from __future__ import annotations
 
+import fcntl
 import os
 import shutil
 import stat
@@ -27,25 +28,26 @@ _DATA = b"payload\n" * 512
 _MTIME_NS = 1_000_000_000_000_000_000
 
 
-def _filesystem_of(path: Path) -> str:
-    """The type of the Linux filesystem holding `path`, from mountinfo."""
-    best, kind = "", ""
-    for line in Path("/proc/self/mountinfo").read_text().splitlines():
-        fields, _, tail = line.partition(" - ")
-        point = fields.split()[4]
-        inside = str(path) == point or str(path).startswith(point.rstrip("/") + "/")
-        if inside and len(point) > len(best):
-            best, kind = point, tail.split()[0]
-    return kind
+# linux/fs.h's FICLONE, _IOW(0x94, 9, int).
+_FICLONE = 0x40049409
 
 
 def _volume_clones(path: Path) -> bool:
-    """Whether the volume at `path` serves copy-on-write clones, known from the
-    platform and filesystem rather than from the helper under test."""
+    """Whether the volume at `path` serves copy-on-write clones, asked of the
+    volume directly rather than through the helper under test."""
     # The macOS suites need APFS (CONTRIBUTING.md), which always clones.
     if sys.platform == "darwin":
         return True
-    return sys.platform == "linux" and _filesystem_of(path) in {"xfs", "btrfs"}
+    if sys.platform != "linux":
+        return False
+    probe = Path(tempfile.mkdtemp(dir=path))
+    (probe / "source").write_bytes(b"probe")
+    with (probe / "source").open("rb") as source, (probe / "clone").open("wb") as clone:
+        try:
+            fcntl.ioctl(clone.fileno(), _FICLONE, source.fileno())
+        except OSError:
+            return False
+    return True
 
 
 class ArchiveCloneTest(unittest.TestCase):
@@ -137,6 +139,26 @@ class ArchiveCloneTest(unittest.TestCase):
             with self.assertRaises(FileExistsError):
                 make(self.mount, self.destination)
             self.assertTrue((self.destination / "kept").exists())
+
+    def test_a_link_that_leaves_the_mount_is_refused(self) -> None:
+        # Through the mount the link resolves inside the expansion's archive,
+        # beside the stripped prefix; in the clone it would name whatever sits
+        # beside the destination instead.
+        (self.expansion.parent / "other").mkdir()
+        (self.expansion.parent / "other" / "data").write_bytes(b"archive\n")
+        (self.destination.parent / "other").mkdir()
+        (self.destination.parent / "other" / "data").write_bytes(b"action\n")
+        self.expansion.chmod(0o755)
+        (self.expansion / "up").symlink_to("../other/data")
+        self.expansion.chmod(0o555)
+        makes = [archive_clone.copy]
+        if _volume_clones(self.base):
+            makes.append(archive_clone.clone)
+        for make in makes:
+            with self.subTest(make=make.__name__):
+                with self.assertRaises(ValueError):
+                    make(self.mount, self.destination)
+                self.assertFalse(os.path.lexists(self.destination))
 
     def test_a_mount_that_is_not_a_directory_is_refused(self) -> None:
         file_mount = self.base / "file-mount"
