@@ -72,6 +72,7 @@ class ArchiveCloneTest(unittest.TestCase):
         (self.expansion / "lib" / "data").write_bytes(_DATA)
         (self.expansion / "lib" / "data").chmod(0o444)
         os.utime(self.expansion / "lib" / "data", ns=(_MTIME_NS, _MTIME_NS))
+        os.link(self.expansion / "lib" / "data", self.expansion / "lib" / "twin")
         (self.expansion / "alias").symlink_to("lib/data")
         for directory in ["bin", "lib", "empty", "."]:
             (self.expansion / directory).chmod(0o555)
@@ -95,7 +96,7 @@ class ArchiveCloneTest(unittest.TestCase):
         )
         for directory in [root, root / "bin", root / "lib", root / "empty"]:
             self.assertEqual(stat.S_IMODE(directory.stat().st_mode), 0o755)
-        files = {"bin/tool": 0o555, "lib/data": 0o444}
+        files = {"bin/tool": 0o555, "lib/data": 0o444, "lib/twin": 0o444}
         for name, mode in files.items():
             expected = mode | stat.S_IWUSR if writable_files else mode
             self.assertEqual(stat.S_IMODE((root / name).stat().st_mode), expected)
@@ -104,6 +105,9 @@ class ArchiveCloneTest(unittest.TestCase):
         (root / "lib" / "data").chmod(0o644)
         (root / "lib" / "data").write_bytes(b"rewritten\n")
         self.assertEqual((self.expansion / "lib" / "data").read_bytes(), _DATA)
+        # A hard link becomes a file of its own, as clonefile(2) makes it, on
+        # every platform and in the copy alike.
+        self.assertEqual((root / "lib" / "twin").read_bytes(), _DATA)
         # Whatever cleans up the action removes the clone without fixing modes.
         shutil.rmtree(root)
 
@@ -141,24 +145,27 @@ class ArchiveCloneTest(unittest.TestCase):
             self.assertTrue((self.destination / "kept").exists())
 
     def test_a_link_that_leaves_the_mount_is_refused(self) -> None:
-        # Through the mount the link resolves inside the expansion's archive,
-        # beside the stripped prefix; in the clone it would name whatever sits
-        # beside the destination instead.
+        # Through the mount each link resolves inside the expansion's archive,
+        # beside the stripped prefix. In the clone one would name whatever sits
+        # beside the destination, and the other leaves the clone only to come
+        # back into it, where it reads what the mount never did.
         (self.expansion.parent / "other").mkdir()
         (self.expansion.parent / "other" / "data").write_bytes(b"archive\n")
         (self.destination.parent / "other").mkdir()
         (self.destination.parent / "other" / "data").write_bytes(b"action\n")
-        self.expansion.chmod(0o755)
-        (self.expansion / "up").symlink_to("../other/data")
-        self.expansion.chmod(0o555)
         makes = [archive_clone.copy]
         if _volume_clones(self.base):
             makes.append(archive_clone.clone)
-        for make in makes:
-            with self.subTest(make=make.__name__):
-                with self.assertRaises(ValueError):
-                    make(self.mount, self.destination)
-                self.assertFalse(os.path.lexists(self.destination))
+        for target in ["../other/data", f"../{self.destination.name}/lib/data"]:
+            self.expansion.chmod(0o755)
+            (self.expansion / "up").unlink(missing_ok=True)
+            (self.expansion / "up").symlink_to(target)
+            self.expansion.chmod(0o555)
+            for make in makes:
+                with self.subTest(target=target, make=make.__name__):
+                    with self.assertRaises(ValueError):
+                        make(self.mount, self.destination)
+                    self.assertFalse(os.path.lexists(self.destination))
 
     def test_a_mount_that_is_not_a_directory_is_refused(self) -> None:
         file_mount = self.base / "file-mount"

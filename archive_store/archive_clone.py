@@ -18,7 +18,7 @@ Each leaves every directory owner-writable, so whatever removes the tree can,
 and with `writable_files` every regular file too, for a command that rewrites
 them; otherwise files keep the store's modes, which saves a call per file. A
 hard link within the tree becomes a file of its own, as clonefile(2) makes it.
-A symlink that resolves outside the result fails it: the mount resolved that
+A symlink whose resolution leaves the result fails it: the mount resolved that
 link inside the expansion, as one that climbs out of a stripped prefix does,
 and the result would read something else there. `destination` is a new path
 only the caller writes; a failure leaves nothing at it.
@@ -52,7 +52,7 @@ def clone(mount: Path, destination: Path, *, writable_files: bool = False) -> in
 
     Returns how many entries were made owner-writable. Raises OSError where the
     platform or the volume cannot clone, FileExistsError when `destination`
-    exists, and ValueError for a link that resolves outside the clone.
+    exists, and ValueError for a link whose resolution leaves the clone.
     """
     source = _expansion(mount)
     # Each platform sits in its own arm: mypy skips an arm the checking
@@ -116,18 +116,25 @@ def _reflink(source: Path, destination: Path) -> None:
     # --reflink=always fails a file the volume cannot clone, where auto would
     # copy it. Mode and times are kept as clonefile(2) keeps them.
     arguments = ["-R", "-P", "--reflink=always", "--preserve=mode,timestamps"]
-    result = subprocess.run(
+    shown: list[str] = []
+    errors = 0
+    with subprocess.Popen(
         [cp, *arguments, "--", str(source), str(destination)],
-        capture_output=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
         text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        errors = result.stderr.splitlines()
+    ) as process:
+        assert process.stderr is not None
+        # Read as it comes, keeping only a sample, since the output can be as
+        # long as the tree.
+        for line in process.stderr:
+            errors += 1
+            if len(shown) < _SHOWN_ERRORS:
+                shown.append(line.rstrip("\n"))
+    if process.returncode != 0:
         raise OSError(
             f"cp could not clone {source} to {destination}"
-            f" (exit {result.returncode}, {len(errors)} error lines): "
-            + "; ".join(errors[:_SHOWN_ERRORS])
+            f" (exit {process.returncode}, {errors} error lines): " + "; ".join(shown)
         )
 
 
@@ -143,12 +150,9 @@ def _finish(root: Path, files: bool) -> int:
             for entry in listing:
                 path = Path(entry.path)
                 if entry.is_symlink():
-                    # A dangling link is kept, as the store keeps it, but it
-                    # too must stay inside the tree.
-                    if not Path(os.path.realpath(path)).is_relative_to(inside):
+                    if not _confined(path, inside):
                         raise ValueError(
-                            f"link resolves outside the clone: {path}"
-                            f" -> {os.readlink(path)}"
+                            f"link leaves the clone: {path} -> {os.readlink(path)}"
                         )
                 elif entry.is_dir(follow_symlinks=False):
                     changed += _add_owner_write(path)
@@ -156,6 +160,33 @@ def _finish(root: Path, files: bool) -> int:
                 elif files and entry.is_file(follow_symlinks=False):
                     changed += _add_owner_write(path)
     return changed
+
+
+def _confined(link: Path, root: Path) -> bool:
+    """Whether `link`'s target, walked from the link's own directory a
+    component at a time as the kernel resolves it, stays inside `root`.
+
+    archive_mount.sh holds an expansion's links to the same rule. Checking only
+    where a link ends would pass one that leaves the tree and comes back
+    through what sits beside it, which the mount never read. A component that
+    is not a directory ends the walk, as at a dangling link, which the store
+    keeps; what remains of the target may not climb.
+    """
+    target = os.readlink(link)
+    if target.startswith("/"):
+        return False
+    here = os.path.realpath(link.parent)
+    parts = target.split("/")
+    for index, part in enumerate(parts):
+        if part in {"", "."}:
+            continue
+        step = os.path.join(here, part)
+        if not os.path.isdir(step):
+            return ".." not in parts[index + 1 :]
+        here = os.path.realpath(step)
+        if not Path(here).is_relative_to(root):
+            return False
+    return True
 
 
 def _add_owner_write(path: Path) -> int:
