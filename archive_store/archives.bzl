@@ -591,12 +591,14 @@ fi
 root=$(mktemp -d "$base/archive-mounts.XXXXXX")
 cleanup() {{
     status=$?
+    cleanup_status=0
     # A command can leave a sealed clone in its private scratch. Traverse
     # directories physically so mount links and external files stay untouched.
     if [ -d "$root/tmp" ]; then
-        /usr/bin/find "$root/tmp" -type d ! -perm -0700 -exec /bin/chmod u+rwx '{{}}' \\; || status=1
+        /usr/bin/find "$root/tmp" -type d ! -perm -0700 -exec /bin/chmod u+rwx '{{}}' \\; || cleanup_status=1
     fi
-    /bin/rm -rf "$root" || status=1
+    /bin/rm -rf "$root" || cleanup_status=1
+    [ "$status" -ne 0 ] || status=$cleanup_status
     exit "$status"
 }}
 trap cleanup EXIT

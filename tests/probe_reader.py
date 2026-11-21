@@ -77,6 +77,8 @@ def main(mounts: list[str]) -> int:
             )
             return 1
     print(f"probe_reader: read {', '.join(mounts)} under {root}")
+    if parent := os.environ.get("PROBE_SEAL_LAUNCH_PARENT"):
+        Path(parent).chmod(0o500)
     if os.environ.get("PROBE_LEAVE_SEALED_SCRATCH"):
         sealed = Path(tempfile.mkdtemp())
         (sealed / "payload").write_bytes(b"private clone")

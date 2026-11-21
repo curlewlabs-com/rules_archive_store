@@ -1,5 +1,9 @@
 # Release preparation and publication
 
+A version-specific notice under `docs/release-notes/<version>.md` opens the
+generated notes for that release. Record a store namespace change there so
+operators can budget for the first expansions after upgrade.
+
 A release is a source-only archive of a reviewed commit: the committed module,
 its tests, docs, examples and license, without Git metadata, untracked files or
 build output.

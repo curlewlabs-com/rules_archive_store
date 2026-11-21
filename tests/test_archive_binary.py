@@ -9,6 +9,7 @@ run, such as the Android lock refresh, pass for a good one.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -93,6 +94,30 @@ class ArchiveBinaryTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 23, result.stderr)
         self.assertEqual(list(output.iterdir()), [])
+
+    @unittest.skipIf(os.geteuid() == 0, "root bypasses directory permissions")
+    def test_cleanup_failure_preserves_a_prior_command_failure(self) -> None:
+        # Prevent the launcher from removing its own root only after the child
+        # has started. Both errors are real and the first failure must survive.
+        output = self.temporary / "bazel-out"
+        for child_fails, expected in (("", 1), ("1", 23)):
+            with self.subTest(child_fails=child_fails):
+                output.mkdir()
+                try:
+                    result = self._run(
+                        "tar",
+                        extra={
+                            "TMPDIR": "",
+                            "BUILD_EXECROOT": str(self.temporary),
+                            "PROBE_SEAL_LAUNCH_PARENT": str(output),
+                            "PROBE_LEAVE_SEALED_SCRATCH": child_fails,
+                        },
+                    )
+                    self.assertEqual(result.returncode, expected, result.stderr)
+                    self.assertTrue(list(output.iterdir()))
+                finally:
+                    output.chmod(0o700)
+                    shutil.rmtree(output)
 
     def test_keeps_a_failed_binarys_status_and_still_removes_its_root(self) -> None:
         # probe_reader refuses to read no mounts, exiting 2.

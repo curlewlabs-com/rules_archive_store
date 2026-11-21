@@ -125,5 +125,8 @@ It uses `/tmp` if none is available. With no explicit temporary directory,
 the command also uses that private root for temporary files. Set `RUNNER_TEMP` or `TMPDIR` to a
 clone-capable volume when the command needs a writable clone there.
 
+A forced kill can prevent cleanup. After all affected commands have stopped,
+`bazel clean` removes private expansions stranded in Bazel's output tree.
+
 The linked-tree helper uses `TMPDIR` or `/tmp` for its private store. Its
 run launcher honors `RUNNER_TEMP` in an Actions job.

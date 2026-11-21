@@ -137,6 +137,9 @@ def main() -> int:
         check=True,
         stdout=sys.stderr,
     )
+    release_note = root / "docs" / "release-notes" / f"{version}.md"
+    if release_note.is_file():
+        print(release_note.read_text().rstrip(), end="\n\n")
     print(f"""Source commit: `{revision}`
 
 Add the verified source archive with Bzlmod:
