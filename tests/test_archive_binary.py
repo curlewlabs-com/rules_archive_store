@@ -71,6 +71,12 @@ class ArchiveBinaryTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("mounts=tar,zip", result.stdout)
+        default_tmp = next(
+            line.removeprefix("default_tmp=")
+            for line in result.stdout.splitlines()
+            if line.startswith("default_tmp=")
+        )
+        self.assertFalse(Path(default_tmp).resolve().is_relative_to(output.resolve()))
         locations = [
             line.split("=", 1)[1]
             for line in result.stdout.splitlines()
@@ -117,6 +123,8 @@ class ArchiveBinaryTest(unittest.TestCase):
                     self.assertTrue(list(output.iterdir()))
                 finally:
                     output.chmod(0o700)
+                    for run_root in output.iterdir():
+                        run_root.chmod(0o700)
                     shutil.rmtree(output)
 
     def test_keeps_a_failed_binarys_status_and_still_removes_its_root(self) -> None:

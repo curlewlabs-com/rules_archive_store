@@ -19,7 +19,7 @@ from pathlib import Path
 
 _STORE = Path(__file__).parent.parent / "archive_store"
 # archive_mount.sh: sha256_of "$0" | cut -c1-16.
-_MOUNT_NAMESPACE = "7702e13c2c705994"
+_MOUNT_NAMESPACE = "2cdfa042dbc99169"
 # archive_tree.ts: sha256 over its own bytes then the manifest's, first 16 hex.
 _TREE_NAMESPACE = "880dd4beaf2d58ed"
 

@@ -49,11 +49,14 @@ def main(mounts: list[str]) -> int:
             return 1
     root = Path(os.environ["ARCHIVE_MOUNT_ROOT"])
     if "TEST_TMPDIR" not in os.environ:
+        print(f"default_tmp={tempfile.gettempdir()}")
         print(f"mounts={','.join(sorted(entry.name for entry in root.iterdir()))}")
     for mount in mounts:
         tree = root / mount
         if "TEST_TMPDIR" not in os.environ:
-            with tempfile.TemporaryDirectory() as scratch:
+            with tempfile.TemporaryDirectory(
+                dir=os.environ["ARCHIVE_CLONE_SCRATCH"]
+            ) as scratch:
                 print(f"scratch={Path(scratch).resolve()}")
             print(f"physical={tree.resolve(strict=True)}")
         elif (
@@ -79,8 +82,11 @@ def main(mounts: list[str]) -> int:
     print(f"probe_reader: read {', '.join(mounts)} under {root}")
     if parent := os.environ.get("PROBE_SEAL_LAUNCH_PARENT"):
         Path(parent).chmod(0o500)
+        # Removing the private store also needs write permission on this
+        # parent, which is distinct from the launcher's output directory.
+        Path(os.environ["ARCHIVE_CLONE_SCRATCH"]).parent.chmod(0o500)
     if os.environ.get("PROBE_LEAVE_SEALED_SCRATCH"):
-        sealed = Path(tempfile.mkdtemp())
+        sealed = Path(tempfile.mkdtemp(dir=os.environ["ARCHIVE_CLONE_SCRATCH"]))
         (sealed / "payload").write_bytes(b"private clone")
         sealed.chmod(0o555)
         return 23

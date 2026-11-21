@@ -119,11 +119,12 @@ On a developer machine, or under any executor that does not set the variable,
 the shell mount helper logs each private expansion and removes it when the command exits.
 An action expands beside its mount manifest, and a test expands under
 `TEST_TMPDIR`, so a clone into its output or test directory can use the same
-filesystem. For `bazel run`, the launcher places its private root under
-`RUNNER_TEMP`, then `TMPDIR`, then Bazel's writable output tree, in that order.
-It uses `/tmp` if none is available. With no explicit temporary directory,
-the command also uses that private root for temporary files. Set `RUNNER_TEMP` or `TMPDIR` to a
-clone-capable volume when the command needs a writable clone there.
+filesystem. For `bazel run`, a binary that requests
+`clone_scratch` creates its writable clones under `ARCHIVE_CLONE_SCRATCH`.
+The launcher uses `RUNNER_TEMP`, then `TMPDIR`, then Bazel's writable output
+tree for that run. It falls back to `/tmp` when none is available.
+Other runs keep their usual temporary directory. Select a clone-capable
+volume explicitly when the binary needs clones from a shared executor store.
 
 A forced kill can prevent cleanup. After all affected commands have stopped,
 `bazel clean` removes private expansions stranded in Bazel's output tree.

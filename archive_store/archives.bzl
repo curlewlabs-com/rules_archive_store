@@ -549,7 +549,7 @@ def archive_test_launcher(ctx, mounts, test, data = [], env = {}, tree = None):
     )
     return _launch(ctx, launched, test, script, data, env)
 
-def archive_run_launcher(ctx, mounts, binary, data = [], env = {}):
+def archive_run_launcher(ctx, mounts, binary, data = [], env = {}, clone_scratch = False):
     """Launches `binary` under `bazel run` with each of `mounts` mounted under ARCHIVE_MOUNT_ROOT.
 
     Args:
@@ -561,6 +561,9 @@ def archive_run_launcher(ctx, mounts, binary, data = [], env = {}):
       data: targets the binary reads at run time, which the rule's `args` and
         `env` name.
       env: the binary's environment, with `$(rootpath)` of `data` unexpanded.
+      clone_scratch: provide ARCHIVE_CLONE_SCRATCH beside private expansions for
+        a binary that creates writable clones. General temporary files can use
+        the shorter system path, including for Unix-domain sockets.
 
     Returns:
       A struct whose `executable` is the binary's launcher, whose `runfiles`
@@ -585,7 +588,7 @@ if [ -n "${{RUNNER_TEMP:-}}" ]; then
     export TMPDIR
 fi
 base=${{TMPDIR:-/tmp}}
-if [ -z "${{TMPDIR:-}}" ] && [ -n "${{BUILD_EXECROOT:-}}" ] && [ -w "$BUILD_EXECROOT/bazel-out" ]; then
+if [ {clone_scratch} = 1 ] && [ -z "${{TMPDIR:-}}" ] && [ -n "${{BUILD_EXECROOT:-}}" ] && [ -w "$BUILD_EXECROOT/bazel-out" ]; then
     base=$BUILD_EXECROOT/bazel-out
 fi
 root=$(mktemp -d "$base/archive-mounts.XXXXXX")
@@ -605,14 +608,15 @@ trap cleanup EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
-if [ -z "${{TMPDIR:-}}" ]; then
-    TMPDIR=$root/tmp
-    mkdir "$TMPDIR"
-    export TMPDIR
+if [ {clone_scratch} = 1 ]; then
+    ARCHIVE_CLONE_SCRATCH=$root/tmp
+    mkdir "$ARCHIVE_CLONE_SCRATCH"
+    export ARCHIVE_CLONE_SCRATCH
 fi
 /bin/sh '{helper}' --private-store-parent "$root" --root "$root/mounts" '{manifest}' -- '{binary}' "$@" && status=0 || status=$?
 exit "$status"
 """.format(
+        clone_scratch = "1" if clone_scratch else "0",
         helper = launched.helper.short_path,
         manifest = launched.manifest.short_path,
         binary = executable.short_path,
@@ -649,7 +653,7 @@ archive_test = rule(
 )
 
 def _archive_binary_impl(ctx):
-    launch = archive_run_launcher(ctx, ctx.attr.archives, ctx.attr.binary, ctx.attr.data, ctx.attr.env)
+    launch = archive_run_launcher(ctx, ctx.attr.archives, ctx.attr.binary, ctx.attr.data, ctx.attr.env, clone_scratch = ctx.attr.clone_scratch)
     return [
         DefaultInfo(executable = launch.executable, runfiles = launch.runfiles),
         RunEnvironmentInfo(environment = launch.environment),
@@ -670,6 +674,7 @@ archive_binary = rule(
             mandatory = True,
             doc = "The executable that runs, with the mounts in place.",
         ),
+        "clone_scratch": attr.bool(doc = "Provide ARCHIVE_CLONE_SCRATCH on the private expansion volume for writable clones."),
         "data": attr.label_list(allow_files = True, doc = "What `args` and `env` name."),
         "env": attr.string_dict(doc = "Environment for the binary, with `$(rootpath)` of `data` expanded."),
         "_archive_mount": attr.label(default = _HELPER, allow_single_file = True),
