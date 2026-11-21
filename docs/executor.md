@@ -116,6 +116,19 @@ The budget in them is an example; size it to the disk the store may use.
 ## Without an executor store
 
 On a developer machine, or under any executor that does not set the variable,
-each action expands its archives into a private store under `TMPDIR` and
-removes it when the command exits. That is correct and reuses nothing, and the
-helper logs it on every action.
+the shell mount helper logs each private expansion and removes it when the command exits.
+An action expands beside its mount manifest, and a test expands under
+`TEST_TMPDIR`, so a clone into its output or test directory can use the same
+filesystem. For `bazel run`, a binary that requests
+`clone_scratch` creates its writable clones under `ARCHIVE_CLONE_SCRATCH`.
+The launcher uses `RUNNER_TEMP`, then Bazel's writable output tree, then
+`TMPDIR` for that run. The clone scratch path is absolute, so a command can
+change its working directory before cloning. It falls back to `/tmp` when none is available.
+Other runs keep their usual temporary directory. Select a clone-capable
+volume explicitly when the binary needs clones from a shared executor store.
+
+A forced kill can prevent cleanup. After all affected commands have stopped,
+`bazel clean` removes private expansions stranded in Bazel's output tree.
+
+The linked-tree helper uses `TMPDIR` or `/tmp` for its private store. Its
+run launcher honors `RUNNER_TEMP` in an Actions job.

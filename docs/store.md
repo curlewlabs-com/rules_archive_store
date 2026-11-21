@@ -88,10 +88,11 @@ expansion. What an executor has to provide for that is
   `archive_binary` and `archive_run_launcher` make its mount root with
   `mktemp -d` and run the helper as a child, removing the root once the helper
   returns. `archive_tree_run_launcher` launches a binary with a linked tree the
-  same way. The binary runs by a relative path from the `_main` directory of the
+  same way. Private scratch placement differs between shell mounts and linked
+  trees (see [executor setup](executor.md#without-an-executor-store)). The binary runs by a relative path from the `_main` directory of the
   launcher's runfiles, and `bazel run` sets no `RUNFILES_DIR`, so a shell binary
-  finds its runfiles from that directory, not from `$0.runfiles`. The root holds
-  only mount links, so removing it never touches the store. With a shared store
+  finds its runfiles from that directory, not from `$0.runfiles`. A shared store lives outside the
+  mount root and survives its cleanup. With a shared store
   the helper execs the binary, so its holds name the live process. Outside an
   executor that names a store, each run expands its archives into a private
   store (see The store): the helper then stays the binary's parent, removes that

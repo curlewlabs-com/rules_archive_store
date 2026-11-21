@@ -241,6 +241,7 @@ archive_test(
         "tar",
         "zip",
     ],
+    env = {"PROBE_SHELL_EXPANSION": "1"},
     test = ":probe_reader",
 )
 
@@ -253,6 +254,7 @@ archive_binary(
         "zip": ":_probe_zip",
     },
     binary = ":probe_reader",
+    clone_scratch = True,
 )
 
 # A linked tree of the probe archives, read by an action and, beside an

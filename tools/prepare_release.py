@@ -86,6 +86,7 @@ def main() -> int:
     source = subprocess.check_output(
         ["git", "archive", "--format=tar", f"--prefix={prefix}/", "HEAD"], cwd=root
     )
+    release_note: bytes | None = None
     with (
         tarfile.open(fileobj=io.BytesIO(source)) as committed,
         archive.open("wb") as raw,
@@ -93,6 +94,11 @@ def main() -> int:
         tarfile.open(fileobj=compressed, mode="w") as packaged,
     ):
         for member in committed.getmembers():
+            if member.name == f"{prefix}/docs/release-notes/{version}.md":
+                note = committed.extractfile(member)
+                if note is None or not member.isreg():
+                    raise ValueError(f"invalid release notice: {member.name}")
+                release_note = note.read()
             member.mtime = 0
             member.uid = member.gid = 0
             member.uname = member.gname = ""
@@ -137,6 +143,8 @@ def main() -> int:
         check=True,
         stdout=sys.stderr,
     )
+    if release_note is not None:
+        print(release_note.decode().rstrip(), end="\n\n")
     print(f"""Source commit: `{revision}`
 
 Add the verified source archive with Bzlmod:

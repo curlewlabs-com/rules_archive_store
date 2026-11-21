@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import os
 import stat
 import subprocess
 import tarfile
@@ -184,6 +185,66 @@ class ArchiveMountTest(ArchiveMountCase):
         )
         self.assertTrue((mounts / "nested/tool").is_symlink())
         self.assertFalse((workdir / "nested").exists())
+
+    def test_private_expansions_follow_the_output_volume_and_leave_it_clean(
+        self,
+    ) -> None:
+        # A worker may supply an unrelated TMPDIR even when its output volume
+        # supports cloning. Inspect the real mount while the tree is alive.
+        archive, digest = self._archive("tool.parts", tar_bytes())
+        work = self.root / "action"
+        work.mkdir()
+        (work / "manifest").write_text(
+            f"tool|{digest}|{archive.name}|tool-1.0\n", encoding="ascii"
+        )
+        (work / archive.name).symlink_to(archive)
+        output = work / "output"
+        output.mkdir()
+        result = subprocess.run(
+            [
+                "/bin/sh",
+                str(HELPER),
+                "--private-store-parent",
+                "output",
+                "manifest",
+                "--",
+                "/bin/sh",
+                "-c",
+                "cat tool/share/data.txt && cd tool && pwd -P",
+            ],
+            cwd=work,
+            env={"PATH": "/usr/bin:/bin", "TMPDIR": str(work / "absent")},
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=INFINITE,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload, physical = result.stdout.splitlines()
+        self.assertEqual(payload, "payload")
+        self.assertTrue(physical.startswith(f"{output.resolve()}/archive-store."))
+        self.assertEqual(list(output.iterdir()), [])
+
+    @unittest.skipIf(os.geteuid() == 0, "root bypasses directory permissions")
+    def test_private_cleanup_failure_is_visible_without_an_outer_launcher(self) -> None:
+        # Only the helper owns cleanup here. A launcher's later failure cannot
+        # supply the status if the helper lost it.
+        self.configured = False
+        archive, digest = self._archive("tool.parts", tar_bytes())
+        parent = self.root / "private"
+        parent.mkdir()
+        self.action_env = {"TMPDIR": str(parent)}
+        try:
+            result = self._run(
+                "action",
+                f"tool|{digest}|tool.parts|tool-1.0\n",
+                archive,
+                ["/bin/sh", "-c", 'chmod 500 "$TMPDIR"'],
+            )
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertTrue(list(parent.glob("archive-store.*")))
+        finally:
+            parent.chmod(0o700)
 
     def test_a_relative_store_setting_still_links_mounts_correctly(self) -> None:
         # A mount links to the store from a directory of its own, so a store

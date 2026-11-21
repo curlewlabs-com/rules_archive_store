@@ -9,6 +9,7 @@ run, such as the Android lock refresh, pass for a good one.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -60,6 +61,91 @@ class ArchiveBinaryTest(unittest.TestCase):
         # The mount root and the helper's private store were made here.
         self.assertEqual(list(self.temporary.iterdir()), [])
 
+    def test_a_local_run_expands_and_stages_under_bazel_outputs(self) -> None:
+        # System temporary storage can be a tmpfs with no file cloning.
+        output = self.temporary / "bazel-out"
+        output.mkdir()
+        ordinary = self.temporary / "ordinary"
+        ordinary.mkdir()
+        result = self._run(
+            "tar",
+            extra={"TMPDIR": str(ordinary), "BUILD_EXECROOT": str(self.temporary)},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("mounts=tar,zip", result.stdout)
+        default_tmp = next(
+            line.removeprefix("default_tmp=")
+            for line in result.stdout.splitlines()
+            if line.startswith("default_tmp=")
+        )
+        self.assertEqual(Path(default_tmp).resolve(), ordinary.resolve())
+        locations = [
+            line.split("=", 1)[1]
+            for line in result.stdout.splitlines()
+            if line.startswith(("scratch=", "physical="))
+        ]
+        self.assertEqual(len(locations), 2, result.stdout)
+        for path in locations:
+            self.assertTrue(Path(path).is_relative_to(output.resolve()), path)
+        self.assertEqual(list(output.iterdir()), [])
+
+    def test_relative_scratch_parent_survives_a_child_directory_change(self) -> None:
+        # The system temporary parent can be relative to the runfiles tree;
+        # the clone destination the command receives must survive a chdir.
+        parent = str(
+            Path("tests") / os.path.relpath(self.temporary, Path("tests").resolve())
+        )
+        result = self._run(
+            "tar",
+            extra={
+                "RUNNER_TEMP": parent,
+                "CDPATH": ".",
+                "PROBE_CHANGE_DIRECTORY": str(self.temporary),
+            },
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(list(self.temporary.iterdir()), [])
+
+    def test_failed_run_reclaims_a_sealed_clone_from_child_scratch(self) -> None:
+        output = self.temporary / "bazel-out"
+        output.mkdir()
+        result = self._run(
+            "tar",
+            extra={
+                "TMPDIR": "",
+                "BUILD_EXECROOT": str(self.temporary),
+                "PROBE_LEAVE_SEALED_SCRATCH": "1",
+            },
+        )
+        self.assertEqual(result.returncode, 23, result.stderr)
+        self.assertEqual(list(output.iterdir()), [])
+
+    @unittest.skipIf(os.geteuid() == 0, "root bypasses directory permissions")
+    def test_cleanup_failure_preserves_a_prior_command_failure(self) -> None:
+        # Prevent the launcher from removing its own root only after the child
+        # has started. Both errors are real and the first failure must survive.
+        output = self.temporary / "bazel-out"
+        for child_fails, expected in (("", 1), ("1", 23)):
+            with self.subTest(child_fails=child_fails):
+                output.mkdir()
+                try:
+                    result = self._run(
+                        "tar",
+                        extra={
+                            "TMPDIR": "",
+                            "BUILD_EXECROOT": str(self.temporary),
+                            "PROBE_SEAL_LAUNCH_PARENT": str(output),
+                            "PROBE_LEAVE_SEALED_SCRATCH": child_fails,
+                        },
+                    )
+                    self.assertEqual(result.returncode, expected, result.stderr)
+                    self.assertTrue(list(output.iterdir()))
+                finally:
+                    output.chmod(0o700)
+                    for run_root in output.iterdir():
+                        run_root.chmod(0o700)
+                    shutil.rmtree(output)
+
     def test_keeps_a_failed_binarys_status_and_still_removes_its_root(self) -> None:
         # probe_reader refuses to read no mounts, exiting 2.
         result = self._run()
@@ -75,7 +161,7 @@ class ArchiveBinaryTest(unittest.TestCase):
         result = self._run("tar", "zip", extra={"RUNNER_TEMP": str(job)})
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(
-            f"expanding into private store {job}/archive-store.", result.stderr
+            f"expanding into private store {job}/archive-mounts.", result.stderr
         )
         self.assertEqual(list(self.temporary.iterdir()), [])
         self.assertEqual(list(job.iterdir()), [])
