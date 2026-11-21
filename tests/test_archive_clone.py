@@ -250,6 +250,16 @@ class ArchiveCloneTest(unittest.TestCase):
                 finally:
                     os.chflags(directory, 0)
 
+    def test_a_set_id_file_is_refused_before_changing_ownership(self) -> None:
+        source = self.base / "privileged-mode"
+        source.touch()
+        for mode in (stat.S_ISUID, stat.S_ISGID):
+            with self.subTest(mode=mode):
+                source.chmod(0o755 | mode)
+                with self.assertRaises(ValueError):
+                    archive_clone.clone(source, self.destination)
+                self.assertFalse(os.path.lexists(self.destination))
+
     def test_special_source_is_refused_before_cloning(self) -> None:
         fifo = self.base / "fifo"
         os.mkfifo(fifo)

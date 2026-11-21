@@ -66,6 +66,10 @@ def clone(
     mode = metadata.st_mode
     if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
         raise ValueError(f"clone source is not a regular file or directory: {mount}")
+    # Direct paths can carry privileges that the archive conversion strips.
+    # The clone belongs to its new owner, so it must not acquire set-ID bits.
+    if stat.S_ISREG(mode) and mode & (stat.S_ISUID | stat.S_ISGID):
+        raise ValueError(f"clone source is a set-ID file: {mount}")
     # Each platform sits in its own arm: mypy skips an arm the checking
     # platform rules out, but reports code after an arm that always ends.
     if sys.platform == "darwin":
@@ -124,7 +128,14 @@ def _check_removable_source(source: Path, metadata: os.stat_result) -> None:
     # clonefile preserves BSD flags even on nested directories. Once it has
     # created a locked entry, failure cleanup may be unable to remove it.
     if sys.platform == "darwin":
-        locked = stat.UF_IMMUTABLE | stat.SF_IMMUTABLE | stat.UF_APPEND | stat.SF_APPEND
+        locked = (
+            stat.UF_IMMUTABLE
+            | stat.SF_IMMUTABLE
+            | stat.UF_APPEND
+            | stat.SF_APPEND
+            | stat.SF_NOUNLINK
+            | stat.SF_RESTRICTED
+        )
 
         def check(path: Path, info: os.stat_result) -> None:
             if info.st_flags & locked:
