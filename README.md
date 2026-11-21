@@ -119,9 +119,9 @@ set-ID permissions is refused because cloning gives it a new owner. A direct
 source must provide the same stability as a held expansion: its path, entries
 and their metadata stay unchanged until the clone finishes. For a
 sealed tree, `writable_directories=False` with the default file policy leaves
-the filesystem clone's permissions alone. On macOS a standalone file or a
-sealed tree is checked for immutable, append-only and no-unlink
-flags before cloning. A caller removing a sealed tree must first restore owner
+the filesystem clone's permissions alone. On macOS locked entries and
+standalone files with extended ACLs are refused to preserve access restrictions
+and allow cleanup. A caller removing a sealed tree must first restore owner
 write and search permission on its directories without following links.
 
 A linked tree of many archives (`archive_tree`, and the launchers'

@@ -30,6 +30,7 @@ Python.
 from __future__ import annotations
 
 import ctypes
+import errno
 import functools
 import os
 import shutil
@@ -69,15 +70,12 @@ def clone(
     mode = metadata.st_mode
     if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
         raise ValueError(f"clone source is not a regular file or directory: {mount}")
-    # Direct paths can carry privileges that the archive conversion strips.
-    # The clone belongs to its new owner, so it must not acquire set-ID bits.
-    if stat.S_ISREG(mode) and mode & (stat.S_ISUID | stat.S_ISGID):
-        raise ValueError(f"clone source is a set-ID file: {mount}")
+    _check_source(source, metadata)
     # Each platform sits in its own arm: mypy skips an arm the checking
     # platform rules out, but reports code after an arm that always ends.
     if sys.platform == "darwin":
-        if stat.S_ISREG(mode) or not writable_directories:
-            _check_removable_source(source, metadata)
+        if stat.S_ISREG(mode):
+            _check_file_acl(source)
         make = functools.partial(_clonefile, source, destination)
     elif sys.platform == "linux":
         make = functools.partial(_reflink, source, destination)
@@ -127,32 +125,55 @@ def _create(
         raise
 
 
-def _check_removable_source(source: Path, metadata: os.stat_result) -> None:
-    # clonefile preserves BSD flags even on nested directories. Once it has
-    # created a locked entry, failure cleanup may be unable to remove it.
-    if sys.platform == "darwin":
-        locked = (
-            stat.UF_IMMUTABLE
-            | stat.SF_IMMUTABLE
-            | stat.UF_APPEND
-            | stat.SF_APPEND
-            | stat.SF_NOUNLINK
-        )
-
-        def check(path: Path, info: os.stat_result) -> None:
+def _check_source(source: Path, metadata: os.stat_result) -> None:
+    def check(path: Path, info: os.stat_result) -> None:
+        # Unlike archive conversion, a direct source can carry a set-ID mode.
+        # The new owner must not acquire it on either a file or a tree clone.
+        if stat.S_ISREG(info.st_mode) and info.st_mode & (stat.S_ISUID | stat.S_ISGID):
+            raise ValueError(f"clone source is a set-ID file: {path}")
+        if sys.platform == "darwin":
+            # Once clonefile creates a locked descendant, failure cleanup may
+            # be unable to remove it, regardless of write permission.
+            locked = (
+                stat.UF_IMMUTABLE
+                | stat.SF_IMMUTABLE
+                | stat.UF_APPEND
+                | stat.SF_APPEND
+                | stat.SF_NOUNLINK
+            )
             if info.st_flags & locked:
                 raise ValueError(f"clone source has a locked entry: {path}")
 
-        check(source, metadata)
-        pending = [source] if stat.S_ISDIR(metadata.st_mode) else []
-        while pending:
-            with os.scandir(pending.pop()) as entries:
-                for entry in entries:
-                    path = Path(entry.path)
-                    info = entry.stat(follow_symlinks=False)
-                    check(path, info)
-                    if stat.S_ISDIR(info.st_mode):
-                        pending.append(path)
+    check(source, metadata)
+    pending = [source] if stat.S_ISDIR(metadata.st_mode) else []
+    while pending:
+        with os.scandir(pending.pop()) as entries:
+            for entry in entries:
+                path = Path(entry.path)
+                info = entry.stat(follow_symlinks=False)
+                check(path, info)
+                if stat.S_ISDIR(info.st_mode):
+                    pending.append(path)
+
+
+def _check_file_acl(source: Path) -> None:
+    # Darwin clonefile normally drops the source ACL. Copying it could instead
+    # deny the caller removal of the new file. Archive members have no ACL.
+    get = _library().acl_get_file
+    get.argtypes = [ctypes.c_char_p, ctypes.c_int]
+    get.restype = ctypes.c_void_p
+    # sys/acl.h: ACL_TYPE_EXTENDED. Darwin returns ENOENT for an absent ACL.
+    acl = get(os.fsencode(source), 0x100)
+    if acl is None:
+        code = ctypes.get_errno()
+        if code == errno.ENOENT:
+            return
+        raise OSError(code, os.strerror(code), str(source))
+    free = _library().acl_free
+    free.argtypes = [ctypes.c_void_p]
+    free.restype = ctypes.c_int
+    free(acl)
+    raise ValueError(f"clone source has an extended ACL: {source}")
 
 
 @functools.cache

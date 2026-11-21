@@ -13,6 +13,7 @@ import fcntl
 import os
 import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -235,30 +236,45 @@ class ArchiveCloneTest(unittest.TestCase):
             archive_clone.clone(source, self.destination, writable_files=True)
         self.assertFalse(os.path.lexists(self.destination))
 
-    def test_locked_directory_in_a_sealed_tree_is_refused(self) -> None:
+    def test_locked_directory_in_a_tree_is_refused(self) -> None:
         if sys.platform != "darwin":
             self.skipTest("macOS file flags")
         for directory in (self.expansion, self.expansion / "lib"):
-            with self.subTest(directory=directory):
-                os.chflags(directory, stat.UF_IMMUTABLE)
-                try:
-                    with self.assertRaises(ValueError):
-                        archive_clone.clone(
-                            self.mount, self.destination, writable_directories=False
-                        )
-                    self.assertFalse(os.path.lexists(self.destination))
-                finally:
-                    os.chflags(directory, 0)
+            os.chflags(directory, stat.UF_IMMUTABLE)
+            try:
+                for writable in (False, True):
+                    with self.subTest(directory=directory, writable=writable):
+                        with self.assertRaisesRegex(ValueError, "locked entry"):
+                            archive_clone.clone(
+                                self.mount,
+                                self.destination,
+                                writable_directories=writable,
+                            )
+                        self.assertFalse(os.path.lexists(self.destination))
+            finally:
+                os.chflags(directory, 0)
 
     def test_a_set_id_file_is_refused_before_changing_ownership(self) -> None:
-        source = self.base / "privileged-mode"
-        source.touch()
+        source = self.expansion / "bin/tool"
         for mode in (stat.S_ISUID, stat.S_ISGID):
-            with self.subTest(mode=mode):
-                source.chmod(0o755 | mode)
-                with self.assertRaises(ValueError):
-                    archive_clone.clone(source, self.destination)
-                self.assertFalse(os.path.lexists(self.destination))
+            source.chmod(0o755 | mode)
+            for mount in (source, self.mount):
+                with self.subTest(mode=mode, mount=mount):
+                    with self.assertRaisesRegex(ValueError, "set-ID file"):
+                        archive_clone.clone(mount, self.destination)
+                    self.assertFalse(os.path.lexists(self.destination))
+
+    def test_a_file_with_an_acl_is_refused_before_losing_its_restrictions(self) -> None:
+        if sys.platform != "darwin":
+            self.skipTest("macOS extended ACL")
+        source = self.base / "acl"
+        source.touch()
+        subprocess.run(
+            ["/bin/chmod", "+a", "everyone deny write", str(source)], check=True
+        )
+        with self.assertRaisesRegex(ValueError, "extended ACL"):
+            archive_clone.clone(source, self.destination)
+        self.assertFalse(os.path.lexists(self.destination))
 
     def test_special_source_is_refused_before_cloning(self) -> None:
         fifo = self.base / "fifo"
