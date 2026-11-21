@@ -115,6 +115,11 @@ fails elsewhere; `archive_clone.copy` is the plain copy for a host that cannot
 clone. Either refuses a tree with a link that would resolve outside it, as one
 that climbs out of a stripped prefix does.
 
+A clone can also take a mount or path that names a regular file. To keep the
+source modes throughout a sealed tree, pass `writable_directories=False` with
+the default file mode policy. A caller removing that tree must first restore
+owner write and search permission on its directories without following links.
+
 A linked tree of many archives (`archive_tree`, and the launchers'
 `archive_tree_*` and `tree` forms) is built on macOS only, with `clonefile(2)`,
 under a Bun the consumer names, since a tree's consumer runs Bun to use it:

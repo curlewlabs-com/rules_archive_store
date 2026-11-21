@@ -174,11 +174,55 @@ class ArchiveCloneTest(unittest.TestCase):
             archive_clone.clone(self.mount, Path(f"{self.destination}\0rest"))
         self.assertFalse(os.path.lexists(self.destination))
 
-    def test_a_mount_that_is_not_a_directory_is_refused(self) -> None:
+    def test_a_file_mount_clones_an_independent_file(self) -> None:
+        if not _volume_clones(self.base):
+            self.skipTest("this volume serves no copy-on-write clones")
+        original = self.expansion / "lib" / "data"
         file_mount = self.base / "file-mount"
-        file_mount.symlink_to(self.expansion / "lib" / "data")
-        with self.assertRaises(NotADirectoryError):
-            archive_clone.clone(file_mount, self.destination)
+        file_mount.symlink_to(original)
+        for writable in (False, True):
+            with self.subTest(writable=writable):
+                changed = archive_clone.clone(
+                    file_mount, self.destination, writable_files=writable
+                )
+                self.assertFalse(self.destination.is_symlink())
+                self.assertEqual(self.destination.read_bytes(), _DATA)
+                self.assertEqual(self.destination.stat().st_mtime_ns, _MTIME_NS)
+                self.assertEqual(
+                    stat.S_IMODE(self.destination.stat().st_mode),
+                    0o644 if writable else 0o444,
+                )
+                self.assertEqual(changed, int(writable))
+                self.destination.chmod(0o644)
+                self.destination.write_bytes(b"changed")
+                self.assertEqual(original.read_bytes(), _DATA)
+                self.destination.unlink()
+
+    def test_sealed_directories_keep_modes_and_link_checks(self) -> None:
+        if not _volume_clones(self.base):
+            self.skipTest("this volume serves no copy-on-write clones")
+        with self.subTest("sealed clone"):
+            changed = archive_clone.clone(
+                self.mount, self.destination, writable_directories=False
+            )
+            self.assertEqual(changed, 0)
+            for path in (self.destination, self.destination / "lib"):
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o555)
+            self.assertEqual((self.destination / "alias").read_bytes(), _DATA)
+        # A read-only partial tree must still disappear on a rejected link.
+        self.expansion.chmod(0o755)
+        (self.expansion / "up").symlink_to("../elsewhere")
+        with self.assertRaises(ValueError):
+            archive_clone.clone(
+                self.mount, self.base / "rejected", writable_directories=False
+            )
+        self.assertFalse(os.path.lexists(self.base / "rejected"))
+
+    def test_special_source_is_refused_before_cloning(self) -> None:
+        fifo = self.base / "fifo"
+        os.mkfifo(fifo)
+        with self.assertRaises(ValueError):
+            archive_clone.clone(fifo, self.destination)
         self.assertFalse(os.path.lexists(self.destination))
 
 
