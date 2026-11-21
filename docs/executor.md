@@ -116,10 +116,14 @@ The budget in them is an example; size it to the disk the store may use.
 ## Without an executor store
 
 On a developer machine, or under any executor that does not set the variable,
-the helper logs each private expansion and removes it when the command exits.
+the shell mount helper logs each private expansion and removes it when the command exits.
 An action expands beside its mount manifest, and a test expands under
 `TEST_TMPDIR`, so a clone into its output or test directory can use the same
 filesystem. For `bazel run`, the launcher places its private root under
-`RUNNER_TEMP`, then `TMPDIR`, then the writable workspace, in that order.
-It uses `/tmp` if none is available. Set `RUNNER_TEMP` or `TMPDIR` to a
+`RUNNER_TEMP`, then `TMPDIR`, then Bazel's writable output tree, in that order.
+It uses `/tmp` if none is available. With no explicit temporary directory,
+the command also uses that private root for temporary files. Set `RUNNER_TEMP` or `TMPDIR` to a
 clone-capable volume when the command needs a writable clone there.
+
+The linked-tree helper uses `TMPDIR` or `/tmp` for its private store. Its
+run launcher honors `RUNNER_TEMP` in an Actions job.

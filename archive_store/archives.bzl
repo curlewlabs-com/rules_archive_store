@@ -585,10 +585,14 @@ if [ -n "${{RUNNER_TEMP:-}}" ]; then
     export TMPDIR
 fi
 base=${{TMPDIR:-/tmp}}
-if [ -z "${{TMPDIR:-}}" ] && [ -w "${{BUILD_WORKSPACE_DIRECTORY:-}}" ]; then
-    base=$BUILD_WORKSPACE_DIRECTORY
+if [ -z "${{TMPDIR:-}}" ] && [ -n "${{BUILD_EXECROOT:-}}" ] && [ -w "$BUILD_EXECROOT/bazel-out" ]; then
+    base=$BUILD_EXECROOT/bazel-out
 fi
 root=$(mktemp -d "$base/archive-mounts.XXXXXX")
+if [ -z "${{TMPDIR:-}}" ]; then
+    TMPDIR=$root
+    export TMPDIR
+fi
 trap '/bin/rm -rf "$root"' EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT

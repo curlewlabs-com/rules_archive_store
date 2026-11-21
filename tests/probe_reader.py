@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Mapping
 from pathlib import Path
@@ -49,6 +50,10 @@ def main(mounts: list[str]) -> int:
     root = Path(os.environ["ARCHIVE_MOUNT_ROOT"])
     for mount in mounts:
         tree = root / mount
+        if "TEST_TMPDIR" not in os.environ:
+            with tempfile.TemporaryDirectory() as scratch:
+                print(f"scratch={Path(scratch).resolve()}")
+            print(f"physical={tree.resolve(strict=True)}")
         answer = subprocess.run(
             [str(tree / "bin/answer")], capture_output=True, check=True
         ).stdout
