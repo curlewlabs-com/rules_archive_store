@@ -111,9 +111,25 @@ archive_clone.clone(mounts / "sdk", work / "sdk", writable_files=True)
 
 The clone shares the expansion's blocks, so it costs metadata. It needs a
 volume that clones, the store's own ([docs/executor.md](docs/executor.md)), and
-fails elsewhere; `archive_clone.copy` is the plain copy for a host that cannot
-clone. Either refuses a tree with a link that would resolve outside it, as one
-that climbs out of a stripped prefix does.
+fails elsewhere. `archive_clone.copy` copies a directory for a host that
+cannot clone. Both refuse a tree with a link that would resolve outside it.
+
+A clone can also take a path or mount that names a regular file. A file with
+set-ID permissions is refused because cloning gives it a new owner. A direct
+source must provide the same stability as a held expansion: its path, entries
+and their metadata stay unchanged until the clone finishes. For a
+sealed tree, `writable_directories=False` with the default file policy leaves
+the filesystem clone's permissions alone. Sources contain regular files,
+directories and symlinks. On macOS, locked entries are refused. For regular files
+and mode-preserving trees on macOS, source entries and the destination parent
+must have no extended ACL. Ordinary directory clones on macOS retain native
+ACL inheritance. On Linux, ACL preservation depends on GNU cp and filesystem support.
+
+Give each call a new destination path in a private directory. No other task
+may create or change that path until the call returns, because a failed call
+removes its own partial result. The directory's permissions and inherited ACLs
+must allow that removal. A caller removing a sealed tree must first restore owner
+write and search permission on its directories without following links.
 
 A linked tree of many archives (`archive_tree`, and the launchers'
 `archive_tree_*` and `tree` forms) is built on macOS only, with `clonefile(2)`,

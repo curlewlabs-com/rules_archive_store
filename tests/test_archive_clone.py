@@ -13,6 +13,7 @@ import fcntl
 import os
 import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -174,12 +175,162 @@ class ArchiveCloneTest(unittest.TestCase):
             archive_clone.clone(self.mount, Path(f"{self.destination}\0rest"))
         self.assertFalse(os.path.lexists(self.destination))
 
-    def test_a_mount_that_is_not_a_directory_is_refused(self) -> None:
+    def test_a_file_mount_clones_an_independent_file(self) -> None:
+        if not _volume_clones(self.base):
+            self.skipTest("this volume serves no copy-on-write clones")
+        original = self.expansion / "lib" / "data"
         file_mount = self.base / "file-mount"
-        file_mount.symlink_to(self.expansion / "lib" / "data")
-        with self.assertRaises(NotADirectoryError):
-            archive_clone.clone(file_mount, self.destination)
+        file_mount.symlink_to(original)
+        for writable in (False, True):
+            with self.subTest(writable=writable):
+                changed = archive_clone.clone(
+                    file_mount, self.destination, writable_files=writable
+                )
+                self.assertFalse(self.destination.is_symlink())
+                self.assertEqual(self.destination.read_bytes(), _DATA)
+                self.assertEqual(self.destination.stat().st_mtime_ns, _MTIME_NS)
+                self.assertEqual(
+                    stat.S_IMODE(self.destination.stat().st_mode),
+                    0o644 if writable else 0o444,
+                )
+                self.assertEqual(changed, int(writable))
+                self.destination.chmod(0o644)
+                self.destination.write_bytes(b"changed")
+                self.assertEqual(original.read_bytes(), _DATA)
+                self.destination.unlink()
+
+    def test_sealed_directories_keep_modes_and_link_checks(self) -> None:
+        if not _volume_clones(self.base):
+            self.skipTest("this volume serves no copy-on-write clones")
+        for files in (False, True):
+            with self.subTest(writable_files=files):
+                root = self.base / f"sealed-{files}"
+                changed = archive_clone.clone(
+                    self.mount, root, writable_directories=False, writable_files=files
+                )
+                self.assertEqual(changed, 3 if files else 0)
+                for path in (root, root / "lib"):
+                    self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o555)
+                self.assertEqual(
+                    stat.S_IMODE((root / "lib/data").stat().st_mode),
+                    0o644 if files else 0o444,
+                )
+                self.assertEqual((root / "alias").read_bytes(), _DATA)
+        # A read-only partial tree must still disappear on a rejected link.
+        self.expansion.chmod(0o755)
+        (self.expansion / "up").symlink_to("../elsewhere")
+        with self.assertRaises(ValueError):
+            archive_clone.clone(
+                self.mount, self.base / "rejected", writable_directories=False
+            )
+        self.assertFalse(os.path.lexists(self.base / "rejected"))
+
+    def test_locked_file_is_refused_before_it_can_lock_a_clone(self) -> None:
+        if sys.platform != "darwin":
+            self.skipTest("macOS file flags")
+        source = self.base / "locked"
+        source.write_bytes(_DATA)
+        os.chflags(source, stat.UF_IMMUTABLE)
+        self.addCleanup(os.chflags, source, 0)
+        with self.assertRaises(ValueError):
+            archive_clone.clone(source, self.destination, writable_files=True)
         self.assertFalse(os.path.lexists(self.destination))
+
+    def test_locked_directory_in_a_tree_is_refused(self) -> None:
+        if sys.platform != "darwin":
+            self.skipTest("macOS file flags")
+        change_flags = os.chflags
+        for directory in (self.expansion, self.expansion / "lib"):
+            change_flags(directory, stat.UF_IMMUTABLE)
+            try:
+                for writable in (False, True):
+                    with self.subTest(directory=directory, writable=writable):
+                        with self.assertRaisesRegex(ValueError, "locked entry"):
+                            archive_clone.clone(
+                                self.mount,
+                                self.destination,
+                                writable_directories=writable,
+                            )
+                        self.assertFalse(os.path.lexists(self.destination))
+            finally:
+                change_flags(directory, 0)
+
+    def test_a_set_id_file_is_refused_before_changing_ownership(self) -> None:
+        source = self.expansion / "bin/tool"
+        for mode in (stat.S_ISUID, stat.S_ISGID):
+            source.chmod(0o755 | mode)
+            # macOS sandbox profiles can silently strip set-ID even from a
+            # successful chmod. Such a file cannot exercise the refusal.
+            if not source.stat().st_mode & mode:
+                self.skipTest("the test volume or sandbox strips set-ID bits")
+            for mount in (source, self.mount):
+                with self.subTest(mode=mode, mount=mount):
+                    with self.assertRaisesRegex(ValueError, "set-ID file"):
+                        archive_clone.clone(mount, self.destination)
+                    self.assertFalse(os.path.lexists(self.destination))
+
+    def test_a_sealed_clone_refuses_to_drop_an_acl(self) -> None:
+        if sys.platform != "darwin":
+            self.skipTest("macOS extended ACL")
+        for source in (self.expansion, self.expansion / "bin/tool"):
+            subprocess.run(
+                ["/bin/chmod", "+a", "everyone deny write", str(source)], check=True
+            )
+            try:
+                for mount in (source, self.mount):
+                    with self.subTest(source=source, mount=mount):
+                        with self.assertRaisesRegex(ValueError, "extended ACL"):
+                            archive_clone.clone(
+                                mount, self.destination, writable_directories=False
+                            )
+                        self.assertFalse(os.path.lexists(self.destination))
+            finally:
+                subprocess.run(["/bin/chmod", "-N", str(source)], check=True)
+
+    def test_mode_based_clones_refuse_destination_acl_inheritance(self) -> None:
+        if sys.platform != "darwin":
+            self.skipTest("macOS extended ACL")
+        parent = self.destination.parent
+        subprocess.run(
+            [
+                "/bin/chmod",
+                "+a",
+                "everyone allow write,file_inherit,directory_inherit",
+                str(parent),
+            ],
+            check=True,
+        )
+        # The inherited grant actually overrides a read-only file's mode. A
+        # sealed clone here would therefore allow the write it should refuse.
+        inherited = parent / "inherited"
+        inherited.touch(mode=0o444)
+        inherited.write_bytes(b"ACL permits the write")
+        for source in (self.mount, self.expansion / "bin/tool"):
+            with self.assertRaisesRegex(ValueError, "extended ACL"):
+                archive_clone.clone(
+                    source, self.destination, writable_directories=False
+                )
+            self.assertFalse(os.path.lexists(self.destination))
+
+    def test_default_tree_clone_accepts_an_executor_store_acl(self) -> None:
+        if sys.platform != "darwin":
+            self.skipTest("macOS extended ACL")
+        subprocess.run(
+            ["/bin/chmod", "+a", "everyone allow read", str(self.expansion)], check=True
+        )
+        archive_clone.clone(self.mount, self.destination, writable_files=True)
+        (self.destination / "lib/data").write_bytes(b"private")
+        self.assertEqual((self.expansion / "lib/data").read_bytes(), _DATA)
+
+    def test_special_source_is_refused_before_cloning(self) -> None:
+        self.expansion.chmod(0o755)
+        fifo = self.expansion / "fifo"
+        os.mkfifo(fifo)
+        for source in (fifo, self.mount):
+            with self.subTest(source=source):
+                with self.assertRaises(ValueError):
+                    archive_clone.clone(source, self.destination)
+                self.assertFalse(os.path.lexists(self.destination))
 
 
 if __name__ == "__main__":

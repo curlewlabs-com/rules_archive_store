@@ -14,14 +14,15 @@ Where the volume cannot clone, `clone` fails rather than copying the bytes,
 since a silent copy is the cost the store exists to remove. `copy` is that
 copy, for a caller that chose it on a host with no copy-on-write filesystem.
 
-Each leaves every directory owner-writable, so whatever removes the tree can,
-and with `writable_files` every regular file too, for a command that rewrites
-them; otherwise files keep the store's modes, which saves a call per file. A
+By default directories become owner-writable so the caller can remove the tree.
+Files keep their modes unless the caller sets writable_files to rewrite them.
+Set writable_directories=False to skip adding write permission to directories. A
 hard link within the tree becomes a file of its own, as clonefile(2) makes it.
 A symlink whose resolution leaves the result fails it: the mount resolved that
 link inside the expansion, as one that climbs out of a stripped prefix does,
 and the result would read something else there. `destination` is a new path
-only the caller writes; a failure leaves nothing at it.
+that only the caller may create or change until the call returns. Its parent
+must permit the caller to remove entries on failure, including under any ACLs.
 
 This is standard-library Python, for a consumer whose action already runs
 Python.
@@ -30,6 +31,7 @@ Python.
 from __future__ import annotations
 
 import ctypes
+import errno
 import functools
 import os
 import shutil
@@ -47,41 +49,65 @@ _SYSTEM_PATH = "/usr/bin:/bin"
 _SHOWN_ERRORS = 3
 
 
-def clone(mount: Path, destination: Path, *, writable_files: bool = False) -> int:
-    """Clone the tree `mount` names to the new path `destination`.
+def clone(
+    mount: Path,
+    destination: Path,
+    *,
+    writable_files: bool = False,
+    writable_directories: bool = True,
+) -> int:
+    """Clone the directory or regular file `mount` names to the new path `destination`.
+
+    The source, its entries and their metadata must stay stable until the
+    clone finishes, as they do in a held archive expansion. The destination
+    path is exclusively the caller's until return, and its parent must let the
+    caller create and remove its private clone.
 
     Returns how many entries were made owner-writable. Raises OSError where the
     platform or the volume cannot clone, FileExistsError when `destination`
     exists, and ValueError for a link whose resolution leaves the clone.
     """
-    source = _expansion(mount)
+    # Given the mount's link, clonefile(2) would clone the link itself.
+    source = mount.resolve(strict=True)
+    metadata = source.stat()
+    mode = metadata.st_mode
+    if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
+        raise ValueError(f"clone source is not a regular file or directory: {mount}")
+    # On Darwin these modes must avoid the ACL changes clonefile makes.
+    # The original directory operation keeps its native ACL inheritance.
+    mode_only = stat.S_ISREG(mode) or not writable_directories
+    _check_source(source, metadata, mode_only)
     # Each platform sits in its own arm: mypy skips an arm the checking
     # platform rules out, but reports code after an arm that always ends.
     if sys.platform == "darwin":
+        if mode_only:
+            _check_acl(destination.parent.resolve(strict=True))
         make = functools.partial(_clonefile, source, destination)
     elif sys.platform == "linux":
         make = functools.partial(_reflink, source, destination)
     else:
         raise OSError(f"no copy-on-write clone on {sys.platform}: {destination}")
-    return _create(destination, make, writable_files)
+    return _create(
+        destination, make, stat.S_IFMT(mode), writable_files, writable_directories
+    )
 
 
 def copy(mount: Path, destination: Path, *, writable_files: bool = False) -> int:
-    """`clone` as a plain copy of every byte, for a host that cannot clone."""
-    source = _expansion(mount)
-    make = functools.partial(shutil.copytree, source, destination, symlinks=True)
-    return _create(destination, make, writable_files)
-
-
-def _expansion(mount: Path) -> Path:
-    # Given the mount's link, clonefile(2) would clone the link itself.
+    """Copy a mounted directory for a host that cannot clone."""
     source = mount.resolve(strict=True)
     if not source.is_dir():
         raise NotADirectoryError(f"mount is not a directory: {mount}")
-    return source
+    make = functools.partial(shutil.copytree, source, destination, symlinks=True)
+    return _create(destination, make, stat.S_IFDIR, writable_files, True)
 
 
-def _create(destination: Path, make: Callable[[], object], files: bool) -> int:
+def _create(
+    destination: Path,
+    make: Callable[[], object],
+    kind: int,
+    files: bool,
+    directories: bool,
+) -> int:
     # clonefile(2) would read such a path to its NUL and clone to the prefix,
     # where neither the existence check nor the cleanup looks.
     if "\0" in os.fspath(destination):
@@ -90,13 +116,78 @@ def _create(destination: Path, make: Callable[[], object], files: bool) -> int:
         raise FileExistsError(f"clone destination exists: {destination}")
     try:
         make()
-        return _finish(destination, files)
+        if stat.S_IFMT(destination.lstat().st_mode) != kind:
+            raise ValueError(
+                f"clone has a different file type from its source: {destination}"
+            )
+        if kind == stat.S_IFREG:
+            return _add_owner_write(destination) if files else 0
+        return _finish(destination, files, directories)
     except BaseException:
         # A failed clone or copy can leave part of a tree, and nothing else
-        # made one there, since the destination was absent.
+        # may create it during this call under the exclusive-path contract.
         if os.path.lexists(destination):
             _discard(destination)
         raise
+
+
+def _check_source(source: Path, metadata: os.stat_result, mode_only: bool) -> None:
+    def check(path: Path, info: os.stat_result) -> None:
+        if not (
+            stat.S_ISREG(info.st_mode)
+            or stat.S_ISDIR(info.st_mode)
+            or stat.S_ISLNK(info.st_mode)
+        ):
+            raise ValueError(f"clone source has a special entry: {path}")
+        # Unlike archive conversion, a direct source can carry a set-ID mode.
+        # The new owner must not acquire it on either a file or a tree clone.
+        if stat.S_ISREG(info.st_mode) and info.st_mode & (stat.S_ISUID | stat.S_ISGID):
+            raise ValueError(f"clone source is a set-ID file: {path}")
+        if sys.platform == "darwin":
+            # Once clonefile creates a locked descendant, failure cleanup may
+            # be unable to remove it, regardless of write permission.
+            locked = (
+                stat.UF_IMMUTABLE
+                | stat.SF_IMMUTABLE
+                | stat.UF_APPEND
+                | stat.SF_APPEND
+                | stat.SF_NOUNLINK
+            )
+            if mode_only:
+                _check_acl(path)
+            if info.st_flags & locked:
+                raise ValueError(f"clone source has a locked entry: {path}")
+
+    check(source, metadata)
+    pending = [source] if stat.S_ISDIR(metadata.st_mode) else []
+    while pending:
+        with os.scandir(pending.pop()) as entries:
+            for entry in entries:
+                path = Path(entry.path)
+                info = entry.stat(follow_symlinks=False)
+                check(path, info)
+                if stat.S_ISDIR(info.st_mode):
+                    pending.append(path)
+
+
+def _check_acl(source: Path) -> None:
+    # clonefile omits source ACLs and inherits destination entries. Either can
+    # change access even when all POSIX mode bits are preserved.
+    get = _library().acl_get_link_np
+    get.argtypes = [ctypes.c_char_p, ctypes.c_int]
+    get.restype = ctypes.c_void_p
+    # sys/acl.h: ACL_TYPE_EXTENDED. Darwin returns ENOENT for an absent ACL.
+    acl = get(os.fsencode(source), 0x100)
+    if acl is None:
+        code = ctypes.get_errno()
+        if code == errno.ENOENT:
+            return
+        raise OSError(code, os.strerror(code), str(source))
+    free = _library().acl_free
+    free.argtypes = [ctypes.c_void_p]
+    free.restype = ctypes.c_int
+    free(acl)
+    raise ValueError(f"clone requires a path without an extended ACL: {source}")
 
 
 @functools.cache
@@ -149,11 +240,11 @@ def _reflink(source: Path, destination: Path) -> None:
         )
 
 
-def _finish(root: Path, files: bool) -> int:
+def _finish(root: Path, files: bool, directories: bool) -> int:
     """Give owner write where the caller asked for it and check every link;
     return how many entries were made writable."""
     inside = Path(os.path.realpath(root))
-    changed = _add_owner_write(root)
+    changed = _add_owner_write(root) if directories else 0
     pending = [root]
     while pending:
         directory = pending.pop()
@@ -166,7 +257,8 @@ def _finish(root: Path, files: bool) -> int:
                             f"link leaves the clone: {path} -> {os.readlink(path)}"
                         )
                 elif entry.is_dir(follow_symlinks=False):
-                    changed += _add_owner_write(path)
+                    if directories:
+                        changed += _add_owner_write(path)
                     pending.append(path)
                 elif files and entry.is_file(follow_symlinks=False):
                     changed += _add_owner_write(path)
