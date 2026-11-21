@@ -69,11 +69,8 @@ def clone(
     # Each platform sits in its own arm: mypy skips an arm the checking
     # platform rules out, but reports code after an arm that always ends.
     if sys.platform == "darwin":
-        # clonefile carries these flags into the clone. A locked file would
-        # leave even failure cleanup unable to unlink it.
-        locked = stat.UF_IMMUTABLE | stat.SF_IMMUTABLE | stat.UF_APPEND | stat.SF_APPEND
-        if stat.S_ISREG(mode) and metadata.st_flags & locked:
-            raise ValueError(f"clone source is a locked file: {mount}")
+        if stat.S_ISREG(mode) or not writable_directories:
+            _check_removable_source(source, metadata)
         make = functools.partial(_clonefile, source, destination)
     elif sys.platform == "linux":
         make = functools.partial(_reflink, source, destination)
@@ -121,6 +118,28 @@ def _create(
         if os.path.lexists(destination):
             _discard(destination)
         raise
+
+
+def _check_removable_source(source: Path, metadata: os.stat_result) -> None:
+    # clonefile preserves BSD flags even on nested directories. Once it has
+    # created a locked entry, failure cleanup may be unable to remove it.
+    if sys.platform == "darwin":
+        locked = stat.UF_IMMUTABLE | stat.SF_IMMUTABLE | stat.UF_APPEND | stat.SF_APPEND
+
+        def check(path: Path, info: os.stat_result) -> None:
+            if info.st_flags & locked:
+                raise ValueError(f"clone source has a locked entry: {path}")
+
+        check(source, metadata)
+        pending = [source] if stat.S_ISDIR(metadata.st_mode) else []
+        while pending:
+            with os.scandir(pending.pop()) as entries:
+                for entry in entries:
+                    path = Path(entry.path)
+                    info = entry.stat(follow_symlinks=False)
+                    check(path, info)
+                    if stat.S_ISDIR(info.st_mode):
+                        pending.append(path)
 
 
 @functools.cache

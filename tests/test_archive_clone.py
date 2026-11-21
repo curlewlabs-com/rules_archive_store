@@ -235,6 +235,21 @@ class ArchiveCloneTest(unittest.TestCase):
             archive_clone.clone(source, self.destination, writable_files=True)
         self.assertFalse(os.path.lexists(self.destination))
 
+    def test_locked_directory_in_a_sealed_tree_is_refused(self) -> None:
+        if sys.platform != "darwin":
+            self.skipTest("macOS file flags")
+        for directory in (self.expansion, self.expansion / "lib"):
+            with self.subTest(directory=directory):
+                os.chflags(directory, stat.UF_IMMUTABLE)
+                try:
+                    with self.assertRaises(ValueError):
+                        archive_clone.clone(
+                            self.mount, self.destination, writable_directories=False
+                        )
+                    self.assertFalse(os.path.lexists(self.destination))
+                finally:
+                    os.chflags(directory, 0)
+
     def test_special_source_is_refused_before_cloning(self) -> None:
         fifo = self.base / "fifo"
         os.mkfifo(fifo)

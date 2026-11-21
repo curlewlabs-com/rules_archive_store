@@ -111,14 +111,14 @@ archive_clone.clone(mounts / "sdk", work / "sdk", writable_files=True)
 
 The clone shares the expansion's blocks, so it costs metadata. It needs a
 volume that clones, the store's own ([docs/executor.md](docs/executor.md)), and
-fails elsewhere; `archive_clone.copy` is the plain copy for a host that cannot
-clone. Either refuses a tree with a link that would resolve outside it, as one
+fails elsewhere; `archive_clone.copy` copies a directory for a host that cannot clone. Either refuses a tree with a link that would resolve outside it, as one
 that climbs out of a stripped prefix does.
 
 A clone can also take a mount or path that names a regular file. For
 a sealed tree, `writable_directories=False` with the default file policy
-leaves the permissions supplied by the filesystem clone alone. On macOS, a
-file with immutable or append-only flags is refused as a clone source. A caller removing that tree must first restore
+leaves the permissions supplied by the filesystem clone alone. On macOS,
+a single file or a tree cloned with sealed directory modes is checked for
+immutable and append-only flags before cloning, so the result can be removed. A caller removing that tree must first restore
 owner write and search permission on its directories without following links.
 
 A linked tree of many archives (`archive_tree`, and the launchers'
