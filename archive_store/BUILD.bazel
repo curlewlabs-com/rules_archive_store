@@ -44,6 +44,13 @@ py_library(
     imports = ["."],
 )
 
+py_binary(
+    name = "archive_clone",
+    srcs = ["clone_cli.py"],
+    main = "clone_cli.py",
+    deps = [":archive_clone_lib"],
+)
+
 py_library(
     name = "archive_store_evict_lib",
     srcs = ["archive_store_evict.py"],

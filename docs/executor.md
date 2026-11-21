@@ -22,9 +22,9 @@ is specific to Buildbarn beyond the examples.
   Btrfs, where it costs one reflink per file. Either way it writes metadata,
   not the tree's bytes, plus mode changes where the caller requests owner write. On any other volume it fails rather than copying the tree.
 - **Mode-based access for sealed clones on macOS.** An executor offering
-  standalone file or mode-preserving directory clones provides a store
+  standalone files, mode-preserving directories or materialized file links provides a store
   without inherited ACLs and a private destination parent without an ACL.
-  Check both with `ls -lde`. When adding these modes to an existing executor,
+  Materialized links also need ACL-free backing files. Check these paths with `ls -lde`. When adding these modes to an existing executor,
   use an ACL-free store and action directory; the next instance expands its
   archives there. Existing default directory clones can continue using the
   original store and its ACL policy.

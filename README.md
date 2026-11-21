@@ -112,7 +112,8 @@ archive_clone.clone(mounts / "sdk", work / "sdk", writable_files=True)
 The clone shares the expansion's blocks, so it costs metadata. It needs a
 volume that clones, the store's own ([docs/executor.md](docs/executor.md)), and
 fails elsewhere. `archive_clone.copy` copies a directory for a host that
-cannot clone. Both refuse a tree with a link that would resolve outside it.
+cannot clone. By default a link that would resolve outside the cloned or
+copied tree is refused.
 
 A clone can also take a path or mount that names a regular file. A file with
 set-ID permissions is refused because cloning gives it a new owner. A direct
@@ -130,6 +131,22 @@ may create or change that path until the call returns, because a failed call
 removes its own partial result. The directory's permissions and inherited ACLs
 must allow that removal. A caller removing a sealed tree must first restore owner
 write and search permission on its directories without following links.
+
+Build systems can present declared files as symlinks to backing objects.
+For a trusted input tree whose links all name stable regular files, opt in
+to `materialize_file_links=True`. Each link becomes a private clone of its
+target, including a target outside the tree. A dangling link or directory
+link fails the operation. All backing files must be on the destination
+volume. The consuming action must declare each backing file's contents as an
+input. A Bazel symlink declared with `target_path` tracks only its link text.
+Bazel does not key remote inputs on their timestamps or exact permissions.
+An action whose output uses those values must normalize them on its private
+clone or restore them from a declared input manifest.
+On macOS this option requires mode-based access as above.
+
+An action in another language can declare and run the executable
+`@curlewlabs_rules_archive_store//archive_store:archive_clone`. Pass
+`--materialize-file-links` before its source and new destination paths.
 
 A linked tree of many archives (`archive_tree`, and the launchers'
 `archive_tree_*` and `tree` forms) is built on macOS only, with `clonefile(2)`,
