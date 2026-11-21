@@ -21,8 +21,8 @@ hard link within the tree becomes a file of its own, as clonefile(2) makes it.
 A symlink whose resolution leaves the result fails it: the mount resolved that
 link inside the expansion, as one that climbs out of a stripped prefix does,
 and the result would read something else there. `destination` is a new path
-in the caller's private working directory. Its permissions, including inherited
-ACLs, must allow the caller to remove what it creates there on failure.
+that only the caller may create or change until the call returns. Its parent
+must permit the caller to remove entries on failure, including under any ACLs.
 
 This is standard-library Python, for a consumer whose action already runs
 Python.
@@ -60,7 +60,8 @@ def clone(
 
     The source, its entries and their metadata must stay stable until the
     clone finishes, as they do in a held archive expansion. The destination
-    parent must let the caller create and remove its private clone.
+    path is exclusively the caller's until return, and its parent must let the
+    caller create and remove its private clone.
 
     Returns how many entries were made owner-writable. Raises OSError where the
     platform or the volume cannot clone, FileExistsError when `destination`
@@ -72,8 +73,8 @@ def clone(
     mode = metadata.st_mode
     if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
         raise ValueError(f"clone source is not a regular file or directory: {mount}")
-    # File and mode-preserving clones require modes to determine access. The
-    # original directory operation keeps clonefile's native ACL inheritance.
+    # On Darwin these modes must avoid the ACL changes clonefile makes.
+    # The original directory operation keeps its native ACL inheritance.
     mode_only = stat.S_ISREG(mode) or not writable_directories
     _check_source(source, metadata, mode_only)
     # Each platform sits in its own arm: mypy skips an arm the checking
@@ -124,7 +125,7 @@ def _create(
         return _finish(destination, files, directories)
     except BaseException:
         # A failed clone or copy can leave part of a tree, and nothing else
-        # made one there, since the destination was absent.
+        # may create it during this call under the exclusive-path contract.
         if os.path.lexists(destination):
             _discard(destination)
         raise

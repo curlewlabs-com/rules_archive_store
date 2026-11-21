@@ -239,8 +239,9 @@ class ArchiveCloneTest(unittest.TestCase):
     def test_locked_directory_in_a_tree_is_refused(self) -> None:
         if sys.platform != "darwin":
             self.skipTest("macOS file flags")
+        change_flags = os.chflags
         for directory in (self.expansion, self.expansion / "lib"):
-            os.chflags(directory, stat.UF_IMMUTABLE)
+            change_flags(directory, stat.UF_IMMUTABLE)
             try:
                 for writable in (False, True):
                     with self.subTest(directory=directory, writable=writable):
@@ -252,7 +253,7 @@ class ArchiveCloneTest(unittest.TestCase):
                             )
                         self.assertFalse(os.path.lexists(self.destination))
             finally:
-                os.chflags(directory, 0)
+                change_flags(directory, 0)
 
     def test_a_set_id_file_is_refused_before_changing_ownership(self) -> None:
         source = self.expansion / "bin/tool"

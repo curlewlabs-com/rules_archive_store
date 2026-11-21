@@ -120,12 +120,15 @@ source must provide the same stability as a held expansion: its path, entries
 and their metadata stay unchanged until the clone finishes. For a
 sealed tree, `writable_directories=False` with the default file policy leaves
 the filesystem clone's permissions alone. Sources contain regular files,
-directories and symlinks. On macOS locked entries are refused. For a standalone file or a
-mode-preserving directory clone, both the source entries and the destination
-parent must be free of extended ACLs so that mode bits determine access.
-Ordinary directory clones retain native ACL inheritance. Put the destination in an
-action-owned directory whose permissions and inherited ACLs let it remove its
-own entries. A caller removing a sealed tree must first restore owner
+directories and symlinks. On macOS, locked entries are refused. For regular files
+and mode-preserving trees on macOS, source entries and the destination parent
+must have no extended ACL. Ordinary directory clones on macOS retain native
+ACL inheritance. On Linux, GNU cp preserves access ACLs along with file modes.
+
+Give each call a new destination path in a private directory. No other task
+may create or change that path until the call returns, because a failed call
+removes its own partial result. The directory's permissions and inherited ACLs
+must allow that removal. A caller removing a sealed tree must first restore owner
 write and search permission on its directories without following links.
 
 A linked tree of many archives (`archive_tree`, and the launchers'
