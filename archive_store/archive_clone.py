@@ -16,7 +16,7 @@ copy, for a caller that chose it on a host with no copy-on-write filesystem.
 
 By default directories become owner-writable so the caller can remove the tree.
 Files keep their modes unless the caller sets writable_files to rewrite them.
-Clones can also keep directory modes with writable_directories=False. A
+Set writable_directories=False to skip adding write permission to directories. A
 hard link within the tree becomes a file of its own, as clonefile(2) makes it.
 A symlink whose resolution leaves the result fails it: the mount resolved that
 link inside the expansion, as one that climbs out of a stripped prefix does,
@@ -62,18 +62,26 @@ def clone(
     """
     # Given the mount's link, clonefile(2) would clone the link itself.
     source = mount.resolve(strict=True)
-    mode = source.stat().st_mode
+    metadata = source.stat()
+    mode = metadata.st_mode
     if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
         raise ValueError(f"clone source is not a regular file or directory: {mount}")
     # Each platform sits in its own arm: mypy skips an arm the checking
     # platform rules out, but reports code after an arm that always ends.
     if sys.platform == "darwin":
+        # clonefile carries these flags into the clone. A locked file would
+        # leave even failure cleanup unable to unlink it.
+        locked = stat.UF_IMMUTABLE | stat.SF_IMMUTABLE | stat.UF_APPEND | stat.SF_APPEND
+        if stat.S_ISREG(mode) and metadata.st_flags & locked:
+            raise ValueError(f"clone source is a locked file: {mount}")
         make = functools.partial(_clonefile, source, destination)
     elif sys.platform == "linux":
         make = functools.partial(_reflink, source, destination)
     else:
         raise OSError(f"no copy-on-write clone on {sys.platform}: {destination}")
-    return _create(destination, make, writable_files, writable_directories)
+    return _create(
+        destination, make, stat.S_IFMT(mode), writable_files, writable_directories
+    )
 
 
 def copy(mount: Path, destination: Path, *, writable_files: bool = False) -> int:
@@ -82,11 +90,15 @@ def copy(mount: Path, destination: Path, *, writable_files: bool = False) -> int
     if not source.is_dir():
         raise NotADirectoryError(f"mount is not a directory: {mount}")
     make = functools.partial(shutil.copytree, source, destination, symlinks=True)
-    return _create(destination, make, writable_files, True)
+    return _create(destination, make, stat.S_IFDIR, writable_files, True)
 
 
 def _create(
-    destination: Path, make: Callable[[], object], files: bool, directories: bool
+    destination: Path,
+    make: Callable[[], object],
+    kind: int,
+    files: bool,
+    directories: bool,
 ) -> int:
     # clonefile(2) would read such a path to its NUL and clone to the prefix,
     # where neither the existence check nor the cleanup looks.
@@ -96,6 +108,12 @@ def _create(
         raise FileExistsError(f"clone destination exists: {destination}")
     try:
         make()
+        if stat.S_IFMT(destination.lstat().st_mode) != kind:
+            raise ValueError(
+                f"clone has a different file type from its source: {destination}"
+            )
+        if kind == stat.S_IFREG:
+            return _add_owner_write(destination) if files else 0
         return _finish(destination, files, directories)
     except BaseException:
         # A failed clone or copy can leave part of a tree, and nothing else
@@ -158,8 +176,6 @@ def _reflink(source: Path, destination: Path) -> None:
 def _finish(root: Path, files: bool, directories: bool) -> int:
     """Give owner write where the caller asked for it and check every link;
     return how many entries were made writable."""
-    if root.is_file():
-        return _add_owner_write(root) if files else 0
     inside = Path(os.path.realpath(root))
     changed = _add_owner_write(root) if directories else 0
     pending = [root]

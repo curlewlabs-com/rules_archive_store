@@ -201,14 +201,20 @@ class ArchiveCloneTest(unittest.TestCase):
     def test_sealed_directories_keep_modes_and_link_checks(self) -> None:
         if not _volume_clones(self.base):
             self.skipTest("this volume serves no copy-on-write clones")
-        with self.subTest("sealed clone"):
-            changed = archive_clone.clone(
-                self.mount, self.destination, writable_directories=False
-            )
-            self.assertEqual(changed, 0)
-            for path in (self.destination, self.destination / "lib"):
-                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o555)
-            self.assertEqual((self.destination / "alias").read_bytes(), _DATA)
+        for files in (False, True):
+            with self.subTest(writable_files=files):
+                root = self.base / f"sealed-{files}"
+                changed = archive_clone.clone(
+                    self.mount, root, writable_directories=False, writable_files=files
+                )
+                self.assertEqual(changed, 3 if files else 0)
+                for path in (root, root / "lib"):
+                    self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o555)
+                self.assertEqual(
+                    stat.S_IMODE((root / "lib/data").stat().st_mode),
+                    0o644 if files else 0o444,
+                )
+                self.assertEqual((root / "alias").read_bytes(), _DATA)
         # A read-only partial tree must still disappear on a rejected link.
         self.expansion.chmod(0o755)
         (self.expansion / "up").symlink_to("../elsewhere")
@@ -217,6 +223,17 @@ class ArchiveCloneTest(unittest.TestCase):
                 self.mount, self.base / "rejected", writable_directories=False
             )
         self.assertFalse(os.path.lexists(self.base / "rejected"))
+
+    def test_locked_file_is_refused_before_it_can_lock_a_clone(self) -> None:
+        if sys.platform != "darwin":
+            self.skipTest("macOS file flags")
+        source = self.base / "locked"
+        source.write_bytes(_DATA)
+        os.chflags(source, stat.UF_IMMUTABLE)
+        self.addCleanup(os.chflags, source, 0)
+        with self.assertRaises(ValueError):
+            archive_clone.clone(source, self.destination, writable_files=True)
+        self.assertFalse(os.path.lexists(self.destination))
 
     def test_special_source_is_refused_before_cloning(self) -> None:
         fifo = self.base / "fifo"
