@@ -196,8 +196,8 @@
   "moduleExtensions": {
     "//tests:deps.bzl%deps": {
       "os:osx,arch:aarch64": {
-        "bzlTransitiveDigest": "uZ7s651bAzHIw8VhOaidGil+pL/UGMQ+Utsir6muYMM=",
-        "usagesDigest": "lpEx18DcwwYRigPY8956lzDpHHWguoCSfmP+XPEtWMw=",
+        "bzlTransitiveDigest": "6JJJC/lpq/MEnVNih35cvkKwAl64kMvEpxOMEyShztQ=",
+        "usagesDigest": "Xaf4WctebexEJZ+GZuRgTKrBccE4CWnRHYPamT6Hu4o=",
         "recordedInputs": [
           "REPO_MAPPING:,bazel_tools bazel_tools"
         ],
@@ -206,9 +206,9 @@
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {
               "urls": [
-                "https://github.com/oven-sh/bun/releases/download/bun-v1.3.10/bun-darwin-aarch64.zip"
+                "https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/bun-darwin-aarch64.zip"
               ],
-              "sha256": "82034e87c9d9b4398ea619aee2eed5d2a68c8157e9a6ae2d1052d84d533ccd8d",
+              "sha256": "c240d7f0ccb90c263a849fcdb09b7ee62630d921348ed6aafda86b9d577bc510",
               "strip_prefix": "bun-darwin-aarch64",
               "build_file_content": "exports_files([\"bun\"])"
             }
