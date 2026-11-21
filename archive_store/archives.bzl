@@ -589,15 +589,26 @@ if [ -z "${{TMPDIR:-}}" ] && [ -n "${{BUILD_EXECROOT:-}}" ] && [ -w "$BUILD_EXEC
     base=$BUILD_EXECROOT/bazel-out
 fi
 root=$(mktemp -d "$base/archive-mounts.XXXXXX")
-if [ -z "${{TMPDIR:-}}" ]; then
-    TMPDIR=$root
-    export TMPDIR
-fi
-trap '/bin/rm -rf "$root"' EXIT
+cleanup() {{
+    status=$?
+    # A command can leave a sealed clone in its private scratch. Traverse
+    # directories physically so mount links and external files stay untouched.
+    if [ -d "$root/tmp" ]; then
+        /usr/bin/find "$root/tmp" -type d ! -perm -0700 -exec /bin/chmod u+rwx '{{}}' \\; || status=1
+    fi
+    /bin/rm -rf "$root" || status=1
+    exit "$status"
+}}
+trap cleanup EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
-/bin/sh '{helper}' --private-store-parent "$root" --root "$root" '{manifest}' -- '{binary}' "$@" && status=0 || status=$?
+if [ -z "${{TMPDIR:-}}" ]; then
+    TMPDIR=$root/tmp
+    mkdir "$TMPDIR"
+    export TMPDIR
+fi
+/bin/sh '{helper}' --private-store-parent "$root" --root "$root/mounts" '{manifest}' -- '{binary}' "$@" && status=0 || status=$?
 exit "$status"
 """.format(
         helper = launched.helper.short_path,

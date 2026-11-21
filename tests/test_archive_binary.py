@@ -69,6 +69,7 @@ class ArchiveBinaryTest(unittest.TestCase):
             extra={"TMPDIR": "", "BUILD_EXECROOT": str(self.temporary)},
         )
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("mounts=tar,zip", result.stdout)
         locations = [
             line.split("=", 1)[1]
             for line in result.stdout.splitlines()
@@ -77,6 +78,20 @@ class ArchiveBinaryTest(unittest.TestCase):
         self.assertEqual(len(locations), 2, result.stdout)
         for path in locations:
             self.assertTrue(Path(path).is_relative_to(output.resolve()), path)
+        self.assertEqual(list(output.iterdir()), [])
+
+    def test_failed_run_reclaims_a_sealed_clone_from_child_scratch(self) -> None:
+        output = self.temporary / "bazel-out"
+        output.mkdir()
+        result = self._run(
+            "tar",
+            extra={
+                "TMPDIR": "",
+                "BUILD_EXECROOT": str(self.temporary),
+                "PROBE_LEAVE_SEALED_SCRATCH": "1",
+            },
+        )
+        self.assertEqual(result.returncode, 23, result.stderr)
         self.assertEqual(list(output.iterdir()), [])
 
     def test_keeps_a_failed_binarys_status_and_still_removes_its_root(self) -> None:

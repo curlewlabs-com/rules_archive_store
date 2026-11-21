@@ -48,12 +48,25 @@ def main(mounts: list[str]) -> int:
             print(f"probe_reader: {problem}", file=sys.stderr)
             return 1
     root = Path(os.environ["ARCHIVE_MOUNT_ROOT"])
+    if "TEST_TMPDIR" not in os.environ:
+        print(f"mounts={','.join(sorted(entry.name for entry in root.iterdir()))}")
     for mount in mounts:
         tree = root / mount
         if "TEST_TMPDIR" not in os.environ:
             with tempfile.TemporaryDirectory() as scratch:
                 print(f"scratch={Path(scratch).resolve()}")
             print(f"physical={tree.resolve(strict=True)}")
+        elif (
+            os.environ.get("PROBE_SHELL_EXPANSION")
+            and not os.environ.get("RULES_ARCHIVE_STORE_DIR")
+            and not tree.resolve(strict=True).is_relative_to(
+                Path(os.environ["TEST_TMPDIR"]).resolve()
+            )
+        ):
+            print(
+                f"private mount outside test volume: {tree.resolve()}", file=sys.stderr
+            )
+            return 1
         answer = subprocess.run(
             [str(tree / "bin/answer")], capture_output=True, check=True
         ).stdout
@@ -64,6 +77,11 @@ def main(mounts: list[str]) -> int:
             )
             return 1
     print(f"probe_reader: read {', '.join(mounts)} under {root}")
+    if os.environ.get("PROBE_LEAVE_SEALED_SCRATCH"):
+        sealed = Path(tempfile.mkdtemp())
+        (sealed / "payload").write_bytes(b"private clone")
+        sealed.chmod(0o555)
+        return 23
     return 0
 
 

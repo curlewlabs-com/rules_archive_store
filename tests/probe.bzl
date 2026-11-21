@@ -23,6 +23,10 @@ def _archive_probe_impl(ctx):
             # then requires the expected answer; set -e fails the action on
             # any miss.
             'set -eu; out=$1; shift; for tree; do : >"$out"; "$tree/bin/answer" >>"$out"; ' +
+            # A private mount must be on the output volume even if the host's
+            # default temporary directory is on a different filesystem.
+            'if [ -z "${RULES_ARCHIVE_STORE_DIR:-}" ]; then ' +
+            'case "$(cd "$tree" && pwd -P)/" in "$(cd "${out%/*}" && pwd -P)"/archive-store.*/*) ;; *) exit 1 ;; esac; fi; ' +
             'cat "$tree/share/payload.txt" >>"$out"; ' +
             # The archive's dropped directory must not reach the tree.
             'test ! -e "$tree/include"; ' +

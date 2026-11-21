@@ -241,6 +241,7 @@ archive_test(
         "tar",
         "zip",
     ],
+    env = {"PROBE_SHELL_EXPANSION": "1"},
     test = ":probe_reader",
 )
 
