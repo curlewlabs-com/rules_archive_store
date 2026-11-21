@@ -18,7 +18,7 @@ By default directories become owner-writable so the caller can remove the tree.
 Files keep their modes unless the caller sets writable_files to rewrite them.
 Set writable_directories=False to skip adding write permission to directories. A
 hard link within the tree becomes a file of its own, as clonefile(2) makes it.
-A symlink whose resolution leaves the result fails it: the mount resolved that
+By default a symlink whose resolution leaves the result fails it: the mount resolved that
 link inside the expansion, as one that climbs out of a stripped prefix does,
 and the result would read something else there. `destination` is a new path
 that only the caller may create or change until the call returns. Its parent
@@ -68,7 +68,7 @@ def clone(
 
     Returns how many entries were made owner-writable. Raises OSError where the
     platform or the volume cannot clone, FileExistsError when `destination`
-    exists, and ValueError for a link whose resolution leaves the clone.
+    exists, and ValueError for a preserved link whose resolution leaves the clone.
     """
     # Given the mount's link, clonefile(2) would clone the link itself.
     source = mount.resolve(strict=True)

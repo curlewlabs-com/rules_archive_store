@@ -112,7 +112,8 @@ archive_clone.clone(mounts / "sdk", work / "sdk", writable_files=True)
 The clone shares the expansion's blocks, so it costs metadata. It needs a
 volume that clones, the store's own ([docs/executor.md](docs/executor.md)), and
 fails elsewhere. `archive_clone.copy` copies a directory for a host that
-cannot clone. Both refuse a tree with a link that would resolve outside it.
+cannot clone. By default a link that would resolve outside the cloned or
+copied tree is refused.
 
 A clone can also take a path or mount that names a regular file. A file with
 set-ID permissions is refused because cloning gives it a new owner. A direct
@@ -138,6 +139,9 @@ target, including a target outside the tree. A dangling link or directory
 link fails the operation. All backing files must be on the destination
 volume. The consuming action must declare each backing file's contents as an
 input. A Bazel symlink declared with `target_path` tracks only its link text.
+Bazel does not key remote inputs on their timestamps or exact permissions.
+An action whose output uses those values must normalize them on its private
+clone or restore them from a declared input manifest.
 On macOS this option requires mode-based access as above.
 
 An action in another language can declare and run the executable
