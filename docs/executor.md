@@ -121,8 +121,9 @@ An action expands beside its mount manifest, and a test expands under
 `TEST_TMPDIR`, so a clone into its output or test directory can use the same
 filesystem. For `bazel run`, a binary that requests
 `clone_scratch` creates its writable clones under `ARCHIVE_CLONE_SCRATCH`.
-The launcher uses `RUNNER_TEMP`, then `TMPDIR`, then Bazel's writable output
-tree for that run. It falls back to `/tmp` when none is available.
+The launcher uses `RUNNER_TEMP`, then Bazel's writable output tree, then
+`TMPDIR` for that run. The clone scratch path is absolute, so a command can
+change its working directory before cloning. It falls back to `/tmp` when none is available.
 Other runs keep their usual temporary directory. Select a clone-capable
 volume explicitly when the binary needs clones from a shared executor store.
 

@@ -48,6 +48,8 @@ def main(mounts: list[str]) -> int:
             print(f"probe_reader: {problem}", file=sys.stderr)
             return 1
     root = Path(os.environ["ARCHIVE_MOUNT_ROOT"])
+    if directory := os.environ.get("PROBE_CHANGE_DIRECTORY"):
+        os.chdir(directory)
     if "TEST_TMPDIR" not in os.environ:
         print(f"default_tmp={tempfile.gettempdir()}")
         print(f"mounts={','.join(sorted(entry.name for entry in root.iterdir()))}")

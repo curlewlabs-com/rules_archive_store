@@ -588,10 +588,11 @@ if [ -n "${{RUNNER_TEMP:-}}" ]; then
     export TMPDIR
 fi
 base=${{TMPDIR:-/tmp}}
-if [ {clone_scratch} = 1 ] && [ -z "${{TMPDIR:-}}" ] && [ -n "${{BUILD_EXECROOT:-}}" ] && [ -w "$BUILD_EXECROOT/bazel-out" ]; then
+if [ {clone_scratch} = 1 ] && [ -z "${{RUNNER_TEMP:-}}" ] && [ -n "${{BUILD_EXECROOT:-}}" ] && [ -w "$BUILD_EXECROOT/bazel-out" ]; then
     base=$BUILD_EXECROOT/bazel-out
 fi
 root=$(mktemp -d "$base/archive-mounts.XXXXXX")
+root=$(cd -P "$root" && pwd -P)
 cleanup() {{
     status=$?
     cleanup_status=0

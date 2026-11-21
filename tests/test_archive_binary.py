@@ -65,9 +65,11 @@ class ArchiveBinaryTest(unittest.TestCase):
         # System temporary storage can be a tmpfs with no file cloning.
         output = self.temporary / "bazel-out"
         output.mkdir()
+        ordinary = self.temporary / "ordinary"
+        ordinary.mkdir()
         result = self._run(
             "tar",
-            extra={"TMPDIR": "", "BUILD_EXECROOT": str(self.temporary)},
+            extra={"TMPDIR": str(ordinary), "BUILD_EXECROOT": str(self.temporary)},
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("mounts=tar,zip", result.stdout)
@@ -76,7 +78,7 @@ class ArchiveBinaryTest(unittest.TestCase):
             for line in result.stdout.splitlines()
             if line.startswith("default_tmp=")
         )
-        self.assertFalse(Path(default_tmp).resolve().is_relative_to(output.resolve()))
+        self.assertEqual(Path(default_tmp).resolve(), ordinary.resolve())
         locations = [
             line.split("=", 1)[1]
             for line in result.stdout.splitlines()
@@ -86,6 +88,20 @@ class ArchiveBinaryTest(unittest.TestCase):
         for path in locations:
             self.assertTrue(Path(path).is_relative_to(output.resolve()), path)
         self.assertEqual(list(output.iterdir()), [])
+
+    def test_relative_scratch_parent_survives_a_child_directory_change(self) -> None:
+        # The system temporary parent can be relative to the runfiles tree;
+        # the clone destination the command receives must survive a chdir.
+        parent = os.path.relpath(self.temporary)
+        result = self._run(
+            "tar",
+            extra={
+                "RUNNER_TEMP": parent,
+                "PROBE_CHANGE_DIRECTORY": str(self.temporary),
+            },
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(list(self.temporary.iterdir()), [])
 
     def test_failed_run_reclaims_a_sealed_clone_from_child_scratch(self) -> None:
         output = self.temporary / "bazel-out"
