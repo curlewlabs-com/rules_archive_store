@@ -123,7 +123,7 @@ the filesystem clone's permissions alone. Sources contain regular files,
 directories and symlinks. On macOS, locked entries are refused. For regular files
 and mode-preserving trees on macOS, source entries and the destination parent
 must have no extended ACL. Ordinary directory clones on macOS retain native
-ACL inheritance. On Linux, GNU cp preserves access ACLs along with file modes.
+ACL inheritance. On Linux, ACL preservation depends on GNU cp and filesystem support.
 
 Give each call a new destination path in a private directory. No other task
 may create or change that path until the call returns, because a failed call
