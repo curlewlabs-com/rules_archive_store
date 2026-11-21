@@ -167,6 +167,13 @@ class ArchiveCloneTest(unittest.TestCase):
                         make(self.mount, self.destination)
                     self.assertFalse(os.path.lexists(self.destination))
 
+    def test_a_destination_holding_a_nul_is_refused(self) -> None:
+        # Native code would read the path only to its NUL and make the tree at
+        # the prefix, which no cleanup would find.
+        with self.assertRaises(ValueError):
+            archive_clone.clone(self.mount, Path(f"{self.destination}\0rest"))
+        self.assertFalse(os.path.lexists(self.destination))
+
     def test_a_mount_that_is_not_a_directory_is_refused(self) -> None:
         file_mount = self.base / "file-mount"
         file_mount.symlink_to(self.expansion / "lib" / "data")

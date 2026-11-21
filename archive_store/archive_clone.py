@@ -82,6 +82,10 @@ def _expansion(mount: Path) -> Path:
 
 
 def _create(destination: Path, make: Callable[[], object], files: bool) -> int:
+    # clonefile(2) would read such a path to its NUL and clone to the prefix,
+    # where neither the existence check nor the cleanup looks.
+    if "\0" in os.fspath(destination):
+        raise ValueError(f"clone destination holds a NUL: {destination!r}")
     if os.path.lexists(destination):
         raise FileExistsError(f"clone destination exists: {destination}")
     try:
@@ -125,12 +129,19 @@ def _reflink(source: Path, destination: Path) -> None:
         text=True,
     ) as process:
         assert process.stderr is not None
-        # Read as it comes, keeping only a sample, since the output can be as
-        # long as the tree.
-        for line in process.stderr:
-            errors += 1
-            if len(shown) < _SHOWN_ERRORS:
-                shown.append(line.rstrip("\n"))
+        try:
+            # Read as it comes, keeping only a sample, since the output can be
+            # as long as the tree.
+            for line in process.stderr:
+                errors += 1
+                if len(shown) < _SHOWN_ERRORS:
+                    shown.append(line.rstrip("\n"))
+        except BaseException:
+            # Popen's exit waits only briefly on an interruption, and the
+            # caller removes the tree next, so cp must be gone first.
+            process.kill()
+            process.wait()
+            raise
     if process.returncode != 0:
         raise OSError(
             f"cp could not clone {source} to {destination}"
