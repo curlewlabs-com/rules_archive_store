@@ -213,7 +213,7 @@ def archive_mounts(ctx, name, mounts):
     ctx.actions.write(manifest, "\n".join(lines) + "\n")
     return struct(
         executable = "/bin/sh",
-        arguments = [helper.path, manifest.path, "--"],
+        arguments = [helper.path, "--private-store-parent", manifest.dirname, manifest.path, "--"],
         inputs = inputs,
         paths = paths,
     )
@@ -541,7 +541,7 @@ def archive_test_launcher(ctx, mounts, test, data = [], env = {}, tree = None):
     # The mounts go under the test's own temporary directory, which the helper
     # names to the test in ARCHIVE_MOUNT_ROOT, and the helper execs the test,
     # so its holds last exactly as long as the test does.
-    script = "#!/bin/sh\n" + _TEST_STARTED + "exec /bin/sh '{helper}' --root \"${{TEST_TMPDIR:?}}/archive-mounts\" '{manifest}' -- {then}'{test}' \"$@\"\n".format(
+    script = "#!/bin/sh\n" + _TEST_STARTED + "exec /bin/sh '{helper}' --private-store-parent \"${{TEST_TMPDIR:?}}\" --root \"${{TEST_TMPDIR:?}}/archive-mounts\" '{manifest}' -- {then}'{test}' \"$@\"\n".format(
         helper = launched.helper.short_path,
         manifest = launched.manifest.short_path,
         then = then,
@@ -574,7 +574,6 @@ def archive_run_launcher(ctx, mounts, binary, data = [], env = {}):
     # child. With a shared store the helper execs the binary, so its holds name
     # the live process; with a private one, as outside a worker, the helper
     # stays the binary's parent and removes that store when the binary exits.
-    # The root holds only mount links, so removing it never reaches the store.
     # In an Actions job the private store goes under the job's own RUNNER_TEMP:
     # a sweep that ages /tmp by mtime alone, as systemd-tmpfiles does, would
     # delete an expansion during the run, since it keeps its archive's zero
@@ -585,12 +584,16 @@ if [ -n "${{RUNNER_TEMP:-}}" ]; then
     TMPDIR=$RUNNER_TEMP
     export TMPDIR
 fi
-root=$(mktemp -d "${{TMPDIR:-/tmp}}/archive-mounts.XXXXXX")
+base=${{TMPDIR:-/tmp}}
+if [ -z "${{TMPDIR:-}}" ] && [ -w "${{BUILD_WORKSPACE_DIRECTORY:-}}" ]; then
+    base=$BUILD_WORKSPACE_DIRECTORY
+fi
+root=$(mktemp -d "$base/archive-mounts.XXXXXX")
 trap '/bin/rm -rf "$root"' EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
-/bin/sh '{helper}' --root "$root" '{manifest}' -- '{binary}' "$@" && status=0 || status=$?
+/bin/sh '{helper}' --private-store-parent "$root" --root "$root" '{manifest}' -- '{binary}' "$@" && status=0 || status=$?
 exit "$status"
 """.format(
         helper = launched.helper.short_path,

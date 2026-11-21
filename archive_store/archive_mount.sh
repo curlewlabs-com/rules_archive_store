@@ -1,7 +1,7 @@
 #!/bin/sh
 # Mount declared archives into an action's input root, then run its command.
 #
-# Usage: archive_mount.sh [--root DIR] MANIFEST -- COMMAND [ARG...]
+# Usage: archive_mount.sh [--private-store-parent DIR] [--root DIR] MANIFEST -- COMMAND [ARG...]
 #
 # A toolchain, SDK or dependency tree is declared to Bazel as its archive
 # (docs/store.md). This helper turns each archive the manifest
@@ -110,7 +110,13 @@ check_relative() {
 # would be without this helper.
 umask 002
 
-usage="usage: archive_mount.sh [--root DIR] MANIFEST -- COMMAND [ARG...]"
+usage="usage: archive_mount.sh [--private-store-parent DIR] [--root DIR] MANIFEST -- COMMAND [ARG...]"
+private_parent=${TMPDIR:-/tmp}
+if [ "${1:-}" = "--private-store-parent" ]; then
+    [ "$#" -ge 2 ] || fail "$usage"
+    private_parent=$2
+    shift 2
+fi
 # Prepended to each mount path: empty, or the absolute --root and a slash.
 mount_root=
 if [ "${1:-}" = "--root" ]; then
@@ -139,7 +145,7 @@ discard() {
 private_store=
 # Expand into a store of this process's own, removed when it exits.
 use_private_store() {
-    store=$(mktemp -d "${TMPDIR:-/tmp}/archive-store.XXXXXX")
+    store=$(mktemp -d "$private_parent/archive-store.XXXXXX")
     store=$(cd -P "$store" && pwd -P)
     private_store=$store
     # macOS /bin/sh enters an EXIT trap after a `set -u` abort with a stale

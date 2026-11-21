@@ -116,6 +116,10 @@ The budget in them is an example; size it to the disk the store may use.
 ## Without an executor store
 
 On a developer machine, or under any executor that does not set the variable,
-each action expands its archives into a private store under `TMPDIR` and
-removes it when the command exits. That is correct and reuses nothing, and the
-helper logs it on every action.
+the helper logs each private expansion and removes it when the command exits.
+An action expands beside its mount manifest, and a test expands under
+`TEST_TMPDIR`, so a clone into its output or test directory can use the same
+filesystem. For `bazel run`, the launcher places its private root under
+`RUNNER_TEMP`, then `TMPDIR`, then the writable workspace, in that order.
+It uses `/tmp` if none is available. Set `RUNNER_TEMP` or `TMPDIR` to a
+clone-capable volume when the command needs a writable clone there.

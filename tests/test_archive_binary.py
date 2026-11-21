@@ -60,6 +60,16 @@ class ArchiveBinaryTest(unittest.TestCase):
         # The mount root and the helper's private store were made here.
         self.assertEqual(list(self.temporary.iterdir()), [])
 
+    def test_a_local_run_expands_on_the_writable_workspace_volume(self) -> None:
+        # System temporary storage can be a tmpfs with no file cloning.
+        result = self._run(
+            "tar",
+            extra={"TMPDIR": "", "BUILD_WORKSPACE_DIRECTORY": str(self.temporary)},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"under {self.temporary}/archive-mounts.", result.stdout)
+        self.assertEqual(list(self.temporary.iterdir()), [])
+
     def test_keeps_a_failed_binarys_status_and_still_removes_its_root(self) -> None:
         # probe_reader refuses to read no mounts, exiting 2.
         result = self._run()
@@ -75,7 +85,7 @@ class ArchiveBinaryTest(unittest.TestCase):
         result = self._run("tar", "zip", extra={"RUNNER_TEMP": str(job)})
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(
-            f"expanding into private store {job}/archive-store.", result.stderr
+            f"expanding into private store {job}/archive-mounts.", result.stderr
         )
         self.assertEqual(list(self.temporary.iterdir()), [])
         self.assertEqual(list(job.iterdir()), [])
