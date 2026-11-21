@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import os
 import stat
 import subprocess
 import tarfile
@@ -223,6 +224,27 @@ class ArchiveMountTest(ArchiveMountCase):
         self.assertEqual(payload, "payload")
         self.assertTrue(physical.startswith(f"{output.resolve()}/archive-store."))
         self.assertEqual(list(output.iterdir()), [])
+
+    @unittest.skipIf(os.geteuid() == 0, "root bypasses directory permissions")
+    def test_private_cleanup_failure_is_visible_without_an_outer_launcher(self) -> None:
+        # Only the helper owns cleanup here. A launcher's later failure cannot
+        # supply the status if the helper lost it.
+        self.configured = False
+        archive, digest = self._archive("tool.parts", tar_bytes())
+        parent = self.root / "private"
+        parent.mkdir()
+        self.action_env = {"TMPDIR": str(parent)}
+        try:
+            result = self._run(
+                "action",
+                f"tool|{digest}|tool.parts|tool-1.0\n",
+                archive,
+                ["/bin/sh", "-c", 'chmod 500 "$TMPDIR"'],
+            )
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertTrue(list(parent.glob("archive-store.*")))
+        finally:
+            parent.chmod(0o700)
 
     def test_a_relative_store_setting_still_links_mounts_correctly(self) -> None:
         # A mount links to the store from a directory of its own, so a store
