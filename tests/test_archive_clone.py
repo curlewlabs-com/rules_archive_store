@@ -258,6 +258,10 @@ class ArchiveCloneTest(unittest.TestCase):
         source = self.expansion / "bin/tool"
         for mode in (stat.S_ISUID, stat.S_ISGID):
             source.chmod(0o755 | mode)
+            # macOS sandbox profiles can silently strip set-ID even from a
+            # successful chmod. Such a file cannot exercise the refusal.
+            if not source.stat().st_mode & mode:
+                self.skipTest("the test volume or sandbox strips set-ID bits")
             for mount in (source, self.mount):
                 with self.subTest(mode=mode, mount=mount):
                     with self.assertRaisesRegex(ValueError, "set-ID file"):
@@ -267,21 +271,28 @@ class ArchiveCloneTest(unittest.TestCase):
     def test_a_file_with_an_acl_is_refused_before_losing_its_restrictions(self) -> None:
         if sys.platform != "darwin":
             self.skipTest("macOS extended ACL")
-        source = self.base / "acl"
-        source.touch()
-        subprocess.run(
-            ["/bin/chmod", "+a", "everyone deny write", str(source)], check=True
-        )
-        with self.assertRaisesRegex(ValueError, "extended ACL"):
-            archive_clone.clone(source, self.destination)
-        self.assertFalse(os.path.lexists(self.destination))
+        for source in (self.expansion, self.expansion / "bin/tool"):
+            subprocess.run(
+                ["/bin/chmod", "+a", "everyone deny write", str(source)], check=True
+            )
+            try:
+                for mount in (source, self.mount):
+                    with self.subTest(source=source, mount=mount):
+                        with self.assertRaisesRegex(ValueError, "extended ACL"):
+                            archive_clone.clone(mount, self.destination)
+                        self.assertFalse(os.path.lexists(self.destination))
+            finally:
+                subprocess.run(["/bin/chmod", "-N", str(source)], check=True)
 
     def test_special_source_is_refused_before_cloning(self) -> None:
-        fifo = self.base / "fifo"
+        self.expansion.chmod(0o755)
+        fifo = self.expansion / "fifo"
         os.mkfifo(fifo)
-        with self.assertRaises(ValueError):
-            archive_clone.clone(fifo, self.destination)
-        self.assertFalse(os.path.lexists(self.destination))
+        for source in (fifo, self.mount):
+            with self.subTest(source=source):
+                with self.assertRaises(ValueError):
+                    archive_clone.clone(source, self.destination)
+                self.assertFalse(os.path.lexists(self.destination))
 
 
 if __name__ == "__main__":

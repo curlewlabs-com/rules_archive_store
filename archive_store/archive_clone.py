@@ -21,7 +21,8 @@ hard link within the tree becomes a file of its own, as clonefile(2) makes it.
 A symlink whose resolution leaves the result fails it: the mount resolved that
 link inside the expansion, as one that climbs out of a stripped prefix does,
 and the result would read something else there. `destination` is a new path
-only the caller writes; a failure leaves nothing at it.
+in the caller's private working directory. Its permissions, including inherited
+ACLs, must allow the caller to remove what it creates there on failure.
 
 This is standard-library Python, for a consumer whose action already runs
 Python.
@@ -58,7 +59,8 @@ def clone(
     """Clone the directory or regular file `mount` names to the new path `destination`.
 
     The source, its entries and their metadata must stay stable until the
-    clone finishes, as they do in a held archive expansion.
+    clone finishes, as they do in a held archive expansion. The destination
+    parent must let the caller create and remove its private clone.
 
     Returns how many entries were made owner-writable. Raises OSError where the
     platform or the volume cannot clone, FileExistsError when `destination`
@@ -74,8 +76,6 @@ def clone(
     # Each platform sits in its own arm: mypy skips an arm the checking
     # platform rules out, but reports code after an arm that always ends.
     if sys.platform == "darwin":
-        if stat.S_ISREG(mode):
-            _check_file_acl(source)
         make = functools.partial(_clonefile, source, destination)
     elif sys.platform == "linux":
         make = functools.partial(_reflink, source, destination)
@@ -127,6 +127,12 @@ def _create(
 
 def _check_source(source: Path, metadata: os.stat_result) -> None:
     def check(path: Path, info: os.stat_result) -> None:
+        if not (
+            stat.S_ISREG(info.st_mode)
+            or stat.S_ISDIR(info.st_mode)
+            or stat.S_ISLNK(info.st_mode)
+        ):
+            raise ValueError(f"clone source has a special entry: {path}")
         # Unlike archive conversion, a direct source can carry a set-ID mode.
         # The new owner must not acquire it on either a file or a tree clone.
         if stat.S_ISREG(info.st_mode) and info.st_mode & (stat.S_ISUID | stat.S_ISGID):
@@ -141,6 +147,7 @@ def _check_source(source: Path, metadata: os.stat_result) -> None:
                 | stat.SF_APPEND
                 | stat.SF_NOUNLINK
             )
+            _check_acl(path)
             if info.st_flags & locked:
                 raise ValueError(f"clone source has a locked entry: {path}")
 
@@ -156,10 +163,10 @@ def _check_source(source: Path, metadata: os.stat_result) -> None:
                     pending.append(path)
 
 
-def _check_file_acl(source: Path) -> None:
+def _check_acl(source: Path) -> None:
     # Darwin clonefile normally drops the source ACL. Copying it could instead
     # deny the caller removal of the new file. Archive members have no ACL.
-    get = _library().acl_get_file
+    get = _library().acl_get_link_np
     get.argtypes = [ctypes.c_char_p, ctypes.c_int]
     get.restype = ctypes.c_void_p
     # sys/acl.h: ACL_TYPE_EXTENDED. Darwin returns ENOENT for an absent ACL.
