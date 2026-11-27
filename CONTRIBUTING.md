@@ -41,6 +41,7 @@ change. Fixed version tags and published release artifacts are never replaced.
 ```sh
 python3 -m pip install -r requirements-dev.txt
 mypy
+python3 tools/check_typed_caller.py
 bun install --frozen-lockfile
 bun run typecheck
 bazel test //...

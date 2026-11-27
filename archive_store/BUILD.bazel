@@ -41,6 +41,9 @@ py_library(
 py_library(
     name = "archive_clone_lib",
     srcs = ["archive_clone.py"],
+    # The module's types, in runfiles beside it for a checker that reads a
+    # caller's runfiles: pyi_srcs are build-time only and stay out of them.
+    data = ["archive_clone-stubs/__init__.pyi"],
     imports = ["."],
 )
 
