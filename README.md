@@ -109,6 +109,10 @@ import archive_clone
 archive_clone.clone(mounts / "sdk", work / "sdk", writable_files=True)
 ```
 
+Its types ship beside it as the stub package `archive_clone-stubs`, in the
+library's runfiles, so a checker that reads a caller's installed search path
+checks these calls: PEP 561 has no way to mark a single-file module typed.
+
 The clone shares the expansion's blocks, so it costs metadata. It needs a
 volume that clones, the store's own ([docs/executor.md](docs/executor.md)), and
 fails elsewhere. `archive_clone.copy` copies a directory for a host that

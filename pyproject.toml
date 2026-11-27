@@ -8,3 +8,7 @@ python_version = "3.14"
 strict = true
 # The consumer by file, since its directory holds its own Bazel output links.
 files = ["archive_store", "examples/consumer/*.py", "tests", "tools"]
+# The stub package states archive_clone.py's types for an installed caller;
+# read beside the module as source it is a second "archive_clone", and
+# tools/check_typed_caller.py checks it against the module instead.
+exclude = ["^archive_store/archive_clone-stubs/"]
